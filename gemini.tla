@@ -22,8 +22,7 @@ VARIABLES
     (*                                                                             *)
     (* In the specification, this is represented by the heartbeatSender variable   *)
     (* since the standby ToR's heartbeat will be dropped and never listened to.    *)
-    (*******************************************************************************)
-                            
+    (*******************************************************************************)                           
 
 vars == <<torA, torB, muxPointingTo,  heartbeatSender>>
 
@@ -42,8 +41,8 @@ MuxStates == {"Active", "Standby", "MuxWait", "WaitLink"}
 ActiveTor == [linkManager|->"Active", linkProber|->"Active", linkState|->"LinkUp", muxState|->"MuxActive"]
 
 TypeOK == 
-    /\ torA \in [name:{"torA"}, linkManager:LMStates, linkProber:LPStates, linkState: LinkStates, muxState: MuxStates]
-    /\ torB \in [name:{"torB"}, linkManager:LMStates, linkProber:LPStates, linkState: LinkStates, muxState: MuxStates]
+    /\ torA \in [name:{"torA"}, linkManager: LMStates, linkProber: LPStates, linkState: LinkStates, muxState: MuxStates]
+    /\ torB \in [name:{"torB"}, linkManager: LMStates, linkProber: LPStates, linkState: LinkStates, muxState: MuxStates]
     /\ heartbeatSender \in {"torA", "torB", "noResponse"} 
     /\ muxPointingTo \in {"torA", "torB"}
 
