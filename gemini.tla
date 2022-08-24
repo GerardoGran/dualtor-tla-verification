@@ -143,4 +143,14 @@ Next ==
 Spec ==
     Init /\ [][Next]_vars /\ WF_vars(System)
 
+-----------------------------------------------------------------------------
+
+AtMostOneActive ==
+    []~(torA.linkManager = "Active" /\ torB.linkManager = "Active")
+
+RepeatedlyOneActive ==
+    []<>(torA.linkManager = "Active" \/ torB.linkManager = "Active")
+
+THEOREM Spec => AtMostOneActive /\ RepeatedlyOneActive
+
 =============================================================================
