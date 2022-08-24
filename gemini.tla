@@ -105,6 +105,18 @@ ReceiveHeartbeat(t, otherTor) ==
             /\  t' = [t EXCEPT !.linkProber = "Unknown"]
     /\  UNCHANGED <<otherTor, heartbeatSender, muxPointingTo>>
 
+System ==
+    \/ LinkManagerCheck(torA, torB)
+    \/ LinkManagerCheck(torB, torA)
+    \/ LinkManagerSwitch(torA, torB)
+    \/ LinkManagerSwitch(torB, torA)
+    \/ SendHeartbeat(torA)
+    \/ SendHeartbeat(torB)
+    \/ ReceiveHeartbeat(torA, torB)
+    \/ ReceiveHeartbeat(torB, torA)
+
+-----------------------------------------------------------------------------
+
 FailHeartbeat ==
     (*****************************************************************************)
     (* Sender fails to send heartbeat to ToR's making them go into unknown state *)
@@ -112,55 +124,23 @@ FailHeartbeat ==
     /\  heartbeatSender' = "noResponse"
     /\  UNCHANGED <<torA, torB, muxPointingTo>>
 
-muxPointingToInconsistent ==
+FailMux ==
     (******************************************************************)
     (* Failure Action for inconsistent MUX States with MuxCable State *)
     (******************************************************************)
     /\  muxPointingTo' \in {"torA", "torB"}
     /\  UNCHANGED <<torA, torB, heartbeatSender>>
 
+Environment ==
+    \/ FailHeartbeat
+    \/ FailMux    
 
-\* MUXConsistent ==
-    
+-----------------------------------------------------------------------------
 
-AtMostOneActive ==
-    (**************************************************)
-    (* Invariant to check that only one TOR is active *)
-    (**************************************************)
-    /\  torA.linkManager = "Active" => torB.linkManager # "Active"
-    /\  torB.linkManager = "Active" => torA.linkManager # "Active"
-    
-EventuallyOneMustBeActive ==
-    []<>(torA.linkManager = "Active" \/ torB.linkManager = "Active")
-  
-
-HearbeatNotUnknownImpliesHearbeatMuxPointing ==
-    heartbeatSender # "noResponse" => heartbeatSender = muxPointingTo
-
-
-    
 Next == 
-    \/  LinkManagerCheck(torA, torB)    \/  LinkManagerCheck(torB, torA)
-    \/  LinkManagerSwitch(torA, torB)   \/  LinkManagerSwitch(torB, torA)
-    \/  SendHeartbeat(torA)             \/  SendHeartbeat(torB)
-    \/  ReceiveHeartbeat(torA, torB)    \/  ReceiveHeartbeat(torB, torA)
-    \/  FailHeartbeat
-    \/  muxPointingToInconsistent
+    Environment \/ System
 
-    \* \/  \E t \in {torA, torB} :
-    \*     \/  LinkManagerCheck(t)
-    \*     \/  LinkManagerSwitch(t)
-    \*     \/  SendHeartbeat(t)
-    \*     \/  ReceiveHeartbeat(t)
-    \* \/  FailHeartbeat
-    \* \/  muxPointingToInconsistent
+Spec ==
+    Init /\ [][Next]_vars /\ WF_vars(System)
 
-Safe == 
-    AtMostOneActive
-
-Live ==
-    EventuallyOneMustBeActive
-
-\* Spec ==
-    
 =============================================================================
