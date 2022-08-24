@@ -35,7 +35,7 @@ InitialTorStates ==
 LMStates == {"Checking", "Active", "Standby"}
 LPStates == {"Active", "Standby", "Unknown"}
 LinkStates == {"LinkUp", "LinkDown"}
-MuxStates == {"Active", "Standby", "MuxWait", "WaitLink"}
+MuxStates == {"Active", "Standby", "MuxWait", "LinkWait"}
 
 \* 
 ActiveTor == [linkManager|->"Active", linkProber|->"Active", linkState|->"LinkUp", muxState|->"MuxActive"]
