@@ -155,4 +155,11 @@ RepeatedlyOneActive ==
 
 THEOREM Spec => AtMostOneActive /\ RepeatedlyOneActive
 
+-----------------------------------------------------------------------------
+
+Alias ==
+    [
+        torA |-> torA, torB |-> torB, muxPointingTo |-> muxPointingTo,  heartbeatSender |-> heartbeatSender,
+        active |-> { t \in {torA, torB} : t.linkManager = "Active"}
+    ]
 =============================================================================
