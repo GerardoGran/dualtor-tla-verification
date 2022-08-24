@@ -114,6 +114,8 @@ System ==
     \/ SendHeartbeat(torB)
     \/ ReceiveHeartbeat(torA, torB)
     \/ ReceiveHeartbeat(torB, torA)
+    \/ XCVRD(torA, torB)
+    \/ XCVRD(torB, torA)    
 
 -----------------------------------------------------------------------------
 
