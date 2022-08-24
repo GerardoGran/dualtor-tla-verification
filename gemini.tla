@@ -75,13 +75,14 @@ LinkManagerSwitch(t, otherTor) ==
     /\  t' = [t EXCEPT !.muxState = "LinkWait"]
     /\  UNCHANGED <<otherTor, muxPointingTo, heartbeatSender>>
 
-XCVRD(t) ==
+XCVRD(t, otherTor) ==
 \* TODO: Mux is pointing in wrong direction, when to ask where it's pointing?
     /\  t.muxState = "MuxWait"
     /\  \/  /\  muxPointingTo = t.name
             /\  t' = [t EXCEPT !.muxState = "Active"]
         \/  /\  muxPointingTo # t.name
             /\  t' = [t EXCEPT !.muxState = "Standby"]
+    /\  UNCHANGED <<otherTor, heartbeatSender, muxPointingTo>>
 
 SendHeartbeat(sender) ==
     (****************************************************************************)
