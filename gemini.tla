@@ -38,7 +38,7 @@ LinkStates == {"LinkUp", "LinkDown"}
 MuxStates == {"Active", "Standby", "MuxWait", "LinkWait"}
 
 \* 
-ActiveTor == [linkManager|->"Active", linkProber|->"Active", linkState|->"LinkUp", muxState|->"MuxActive"]
+ActiveTor == [name:{"torA", "torB"}, linkManager:{"Active"}, linkProber:{"Active"}, linkState:{"LinkUp"}, muxState:{"MuxActive"}]
 
 TypeOK == 
     /\ torA \in [name:{"torA"}, linkManager: LMStates, linkProber: LPStates, linkState: LinkStates, muxState: MuxStates]
@@ -148,10 +148,10 @@ Spec ==
 -----------------------------------------------------------------------------
 
 AtMostOneActive ==
-    []~(torA.linkManager = "Active" /\ torB.linkManager = "Active")
+    []~(torA \in ActiveTor /\ torB \in ActiveTor)
 
 RepeatedlyOneActive ==
-    []<>(torA.linkManager = "Active" \/ torB.linkManager = "Active")
+    []<>(torA \in ActiveTor \/ torB \in ActiveTor)
 
 THEOREM Spec => AtMostOneActive /\ RepeatedlyOneActive
 
