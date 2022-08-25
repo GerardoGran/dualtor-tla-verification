@@ -41,14 +41,14 @@ MuxStates == {"Active", "Standby", "MuxWait", "LinkWait"}
 ActiveTor == [name:{"torA", "torB"}, linkManager:{"Active"}, linkProber:{"Active"}, linkState:{"LinkUp"}, muxState:{"MuxActive"}]
 
 TypeOK == 
-    /\ torA \in [name:{"torA"}, linkManager: LMStates, linkProber: LPStates, linkState: LinkStates, muxState: MuxStates]
-    /\ torB \in [name:{"torB"}, linkManager: LMStates, linkProber: LPStates, linkState: LinkStates, muxState: MuxStates]
+    /\ torA \in [dead: BOOLEAN, name:{"torA"}, linkManager: LMStates, linkProber: LPStates, linkState: LinkStates, muxState: MuxStates]
+    /\ torB \in [dead: BOOLEAN, name:{"torB"}, linkManager: LMStates, linkProber: LPStates, linkState: LinkStates, muxState: MuxStates]
     /\ heartbeatSender \in {"torA", "torB", "noResponse"} 
     /\ muxPointingTo \in {"torA", "torB"}
 
 Init == 
-    /\ torA = [name |-> "torA", linkManager |-> "Checking", linkProber |-> "Unknown", linkState |-> "LinkDown", muxState |-> "MuxWait"]
-    /\ torB = [name |-> "torB", linkManager |-> "Checking", linkProber |-> "Unknown", linkState |-> "LinkDown", muxState |-> "MuxWait"]
+    /\ torA = [dead |-> FALSE, name |-> "torA", linkManager |-> "Checking", linkProber |-> "Unknown", linkState |-> "LinkDown", muxState |-> "MuxWait"]
+    /\ torB = [dead |-> FALSE, name |-> "torB", linkManager |-> "Checking", linkProber |-> "Unknown", linkState |-> "LinkDown", muxState |-> "MuxWait"]
     /\ muxPointingTo \in {"torA", "torB"}
     /\ heartbeatSender = "noResponse"
 
@@ -57,6 +57,7 @@ Init ==
 \* TODO Page 11 claims that XCVRD changes state depending on *events* set by LinkManager.  Where is this?
 
 LinkManagerCheck(t, otherTor) ==
+    /\ ~t.dead
     (***********************************************************************)
     (* LinkManager takes an action by looking at other states. This action *)
     (* is defined based on the decision table.                             *)
@@ -91,6 +92,7 @@ XCVRD(t, otherTor) ==
 \* State machine page 10 of the Powerpoint presentation as of 08/25/2022
 
 LinkState(t, otherTor) ==
+    /\ ~t.dead
     /\ UNCHANGED <<otherTor, muxPointingTo, heartbeatSender>>
     \* Non-deterministically flip the link state (reacting to a kernel message)
     /\ \/ /\ t.linkState = "LinkDown"
@@ -133,6 +135,7 @@ LinkManagerStandby(t, otherTor) ==
     /\ t' = [t EXCEPT !.linkManager = "Active"]
 
 LinkManagerPage14(t, otherTor) ==
+    /\ ~t.dead
     /\ UNCHANGED <<otherTor, muxPointingTo, heartbeatSender>>
     /\ \/ LinkManagerChecking(t, otherTor)
        \/ LinkManagerActive(t, otherTor)
@@ -142,13 +145,14 @@ LinkManagerPage14(t, otherTor) ==
 
 \* State machine page 09 of the Powerpoint presentation as of 08/25/2022
 
-SendHeartbeat(sender) ==
+SendHeartbeat(t) ==
+    /\ ~t.dead
     (****************************************************************************)
     (* Active ToR sends heartbeat to server. MUX duplicates packet and sends it *)
     (* to both ToR's                                                            *)
     (****************************************************************************)
-    /\  muxPointingTo = sender.name  \* The MUX will drop traffic from ToR if it is not pointing to it
-    /\  heartbeatSender' = sender.name
+    /\  muxPointingTo = t.name  \* The MUX will drop traffic from ToR if it is not pointing to it
+    /\  heartbeatSender' = t.name
     /\  UNCHANGED <<torA, torB, muxPointingTo>>
 
 LinkProberUnknown(t, otherTor) ==
@@ -179,6 +183,7 @@ LinkProberActive(t, otherTor) ==
           /\ t' = [t EXCEPT !.linkProber = "Unknown"]
 
 ReceiveHeartbeat(t, otherTor) ==
+    /\ ~t.dead
     (****************************************************************************)
     (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
     (****************************************************************************)
@@ -221,9 +226,15 @@ FailMux ==
     /\  muxPointingTo' \in {"torA", "torB"}
     /\  UNCHANGED <<torA, torB, heartbeatSender>>
 
+FailTor(t, otherTor) ==
+    /\ t' = [t EXCEPT !.dead = TRUE]
+    /\ UNCHANGED <<otherTor, heartbeatSender, muxPointingTo>>
+
 Environment ==
-    \/ FailHeartbeat
     \/ FailMux
+    \/ FailHeartbeat
+    \/ FailTor(torA, torB)
+    \/ FailTor(torB, torA)
 
 -----------------------------------------------------------------------------
 
@@ -239,7 +250,7 @@ AtMostOneActive ==
     []~(torA \in ActiveTor /\ torB \in ActiveTor)
 
 RepeatedlyOneActive ==
-    []<>(torA \in ActiveTor \/ torB \in ActiveTor)
+    []<>(\E t \in {torA, torB} : ~t.dead => (torA \in ActiveTor \/ torB \in ActiveTor))
 
 THEOREM Spec => AtMostOneActive /\ RepeatedlyOneActive
 
