@@ -28,9 +28,9 @@ vars == <<torA, torB, muxPointingTo,  heartbeatSender>>
 
 InitialTorStates == 
     [linkManager    |-> "Checking",
-     linkProber     |-> "Unknown",
-     linkState      |-> "LinkDown",
-     muxState       |-> "MuxWait"]
+     linkProber      |-> "Unknown",
+     linkState       |-> "LinkDown",
+     muxState        |-> "MuxWait"]
 
 LMStates == {"Checking", "Active", "Standby"}
 LPStates == {"Active", "Standby", "Unknown"}
@@ -47,8 +47,8 @@ TypeOK ==
     /\ muxPointingTo \in {"torA", "torB"}
 
 Init == 
-    /\ torA = [name |-> "torA"] @@ InitialTorStates
-    /\ torB = [name |-> "torB"] @@ InitialTorStates
+    /\ torA = [name |-> "torA", linkManager |-> "Checking", linkProber |-> "Unknown", linkState |-> "LinkDown", muxState |-> "MuxWait"]
+    /\ torB = [name |-> "torB", linkManager |-> "Checking", linkProber |-> "Unknown", linkState |-> "LinkDown", muxState |-> "MuxWait"]
     /\ muxPointingTo \in {"torA", "torB"}
     /\ heartbeatSender = "noResponse"
 
