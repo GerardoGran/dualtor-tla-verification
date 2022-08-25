@@ -24,7 +24,7 @@ VARIABLES
     (* since the standby ToR's heartbeat will be dropped and never listened to.    *)
     (*******************************************************************************)                           
 
-vars == <<torA, torB, muxPointingTo,  heartbeatSender>>
+vars == <<torA, torB, muxPointingTo, heartbeatSender>>
 
 InitialTorStates == 
     [linkManager    |-> "Checking",
@@ -51,6 +51,10 @@ Init ==
     /\ torB = [name |-> "torB", linkManager |-> "Checking", linkProber |-> "Unknown", linkState |-> "LinkDown", muxState |-> "MuxWait"]
     /\ muxPointingTo \in {"torA", "torB"}
     /\ heartbeatSender = "noResponse"
+
+\* Transition table page 13 of the Powerpoint presentation as of 08/25/2022
+
+\* TODO Page 11 claims that XCVRD changes state depending on *events* set by LinkManager.  Where is this?
 
 LinkManagerCheck(t, otherTor) ==
     (***********************************************************************)
@@ -84,6 +88,60 @@ XCVRD(t, otherTor) ==
             /\  t' = [t EXCEPT !.muxState = "Standby"]
     /\  UNCHANGED <<otherTor, heartbeatSender, muxPointingTo>>
 
+\* State machine page 10 of the Powerpoint presentation as of 08/25/2022
+
+LinkState(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, muxPointingTo, heartbeatSender>>
+    \* Non-deterministically flip the link state (reacting to a kernel message)
+    /\ \/ /\ t.linkState = "LinkDown"
+          /\ t' = [t EXCEPT !.linkState = "LinkUp"]
+       \/ /\ t.linkState = "LinkUp"
+          /\ t' = [t EXCEPT !.linkState = "LinkDown"]
+
+\* State machine page 14 of the Powerpoint presentation as of 08/25/2022
+
+LinkManagerChecking(t, otherTor) ==
+    /\ t.linkManager = "Checking"
+    /\ \/ /\ t.muxState = "Active"
+          /\ t.linkState = "LinkUp"
+          /\ t.linkProber = "Active"
+          /\ t' = [t EXCEPT !.linkManager = "Active"]
+       \/ /\ t.muxState = "Standby"
+          /\ t.linkState = "LinkUp"
+          /\ t.linkProber = "Standby"
+          /\ t' = [t EXCEPT !.linkManager = "Standby"]
+       \* TODO MuxFailure and Failure are no enums above!
+       \/ /\ t.muxState = "MuxFailure"
+          /\ t' = [t EXCEPT !.linkManager = "Failure"]
+
+LinkManagerActive(t, otherTor) ==
+    /\ t.linkManager = "Active"
+    /\ \/ /\ t.muxState = "Active"
+          /\ t.linkState = "LinkUp"
+          /\ t.linkProber \in {"Standby", "Unknown"}
+          /\ t' = [t EXCEPT !.linkManager = "Checking"]
+       \/ /\ t.muxState = "Active"
+          /\ t.linkState = "LinkDown"
+          /\ t.linkProber = "Unknown"
+          /\ t' = [t EXCEPT !.linkManager = "Checking"]
+
+LinkManagerStandby(t, otherTor) ==
+    /\ t.linkManager = "Standby"
+    /\ t.muxState = "Standby"
+    /\ t.linkState = "LinkUp"
+    /\ t.linkProber = "Unknown" \* ??? Go to linkManager Active if linkProber is "unknown"?
+    /\ t' = [t EXCEPT !.linkManager = "Active"]
+
+LinkManagerPage14(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, muxPointingTo, heartbeatSender>>
+    /\ \/ LinkManagerChecking(t, otherTor)
+       \/ LinkManagerActive(t, otherTor)
+       \/ LinkManagerStandby(t, otherTor)
+
+-----------------------------------------------------------------------------
+
+\* State machine page 09 of the Powerpoint presentation as of 08/25/2022
+
 SendHeartbeat(sender) ==
     (****************************************************************************)
     (* Active ToR sends heartbeat to server. MUX duplicates packet and sends it *)
@@ -93,17 +151,43 @@ SendHeartbeat(sender) ==
     /\  heartbeatSender' = sender.name
     /\  UNCHANGED <<torA, torB, muxPointingTo>>
 
+LinkProberUnknown(t, otherTor) ==
+    /\ t.linkProber = "Unknown"
+    /\ \/ /\ t.name = heartbeatSender
+          /\ t' = [t EXCEPT !.linkProber = "Active"]
+       \/ /\ otherTor.name = heartbeatSender
+          /\ t' = [t EXCEPT !.linkProber = "Standby"]
+       \/ /\ "noResponse" = heartbeatSender
+          /\ UNCHANGED t
+
+LinkProberStandby(t, otherTor) ==
+    /\ t.linkProber = "Standby"
+    /\ \/ /\ t.name = heartbeatSender
+          /\ t' = [t EXCEPT !.linkProber = "Active"]
+       \/ /\ otherTor.name = heartbeatSender
+          /\ UNCHANGED t
+       \/ /\ "noResponse" = heartbeatSender
+          /\ t' = [t EXCEPT !.linkProber = "Unknown"]
+
+LinkProberActive(t, otherTor) ==
+    /\ t.linkProber = "Active"
+    /\ \/ /\ t.name = heartbeatSender
+          /\ UNCHANGED t
+       \/ /\ otherTor.name = heartbeatSender
+          /\ t' = [t EXCEPT !.linkProber = "Standby"]
+       \/ /\ "noResponse" = heartbeatSender
+          /\ t' = [t EXCEPT !.linkProber = "Unknown"]
+
 ReceiveHeartbeat(t, otherTor) ==
     (****************************************************************************)
     (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
     (****************************************************************************)
-    /\  \/  /\  heartbeatSender = t.name
-            /\  t' = [t EXCEPT !.linkProber = "Active"]
-        \/  /\  heartbeatSender = otherTor.name
-            /\  t' = [t EXCEPT !.linkProber = "Standby"]
-        \/  /\  heartbeatSender = "noResponse"
-            /\  t' = [t EXCEPT !.linkProber = "Unknown"]
     /\  UNCHANGED <<otherTor, heartbeatSender, muxPointingTo>>
+    /\  \/  LinkProberUnknown(t, otherTor)
+        \/  LinkProberStandby(t, otherTor)
+        \/  LinkProberActive(t, otherTor)
+
+-----------------------------------------------------------------------------
 
 System ==
     \/ LinkManagerCheck(torA, torB)
@@ -114,6 +198,10 @@ System ==
     \/ SendHeartbeat(torB)
     \/ ReceiveHeartbeat(torA, torB)
     \/ ReceiveHeartbeat(torB, torA)
+    \/ LinkManagerPage14(torA, torB)
+    \/ LinkManagerPage14(torB, torA)
+    \/ LinkState(torA, torB)
+    \/ LinkState(torB, torA)
     \/ XCVRD(torA, torB)
     \/ XCVRD(torB, torA)    
 
@@ -135,7 +223,7 @@ FailMux ==
 
 Environment ==
     \/ FailHeartbeat
-    \/ FailMux    
+    \/ FailMux
 
 -----------------------------------------------------------------------------
 
