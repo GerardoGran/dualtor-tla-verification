@@ -29,7 +29,7 @@ vars == <<torA, torB, mux, heartbeatSender>>
 T == {"torA", "torB"}
 
 \* Link Manager (page 14)
-LMStates == {"Checking", "Active", "Standby"}
+LMStates == {"Checking", "Active", "Standby"} \union {"Failure"}
 
 \* Link Prober (page 9)
 LPStates == {"Active", "Standby", "Unknown"}
@@ -38,7 +38,7 @@ LPStates == {"Active", "Standby", "Unknown"}
 LinkStates == {"LinkUp", "LinkDown"}
 
 \* Mux State (page 12)
-MuxStates == {"Active", "Standby", "MuxWait", "LinkWait"}
+MuxStates == {"Active", "Standby", "MuxWait", "LinkWait"} \union {"MuxFailure"}
 
 ToR ==
     [ dead: BOOLEAN, 
@@ -72,42 +72,63 @@ Init ==
           linkState       |-> "LinkDown",
           muxState        |-> "MuxWait" ]
     IN  /\ torA = InitialTor("torA")
-        /\ torA = InitialTor("torB")
+        /\ torB = InitialTor("torB")
         /\ mux \in T
         /\ heartbeatSender = "noResponse"
 
-LinkManagerCheck(t, otherTor) ==
-    /\ ~t.dead
-    (***********************************************************************)
-    (* LinkManager takes an action by looking at other states. This action *)
-    (* is defined based on the decision table.                             *)
-    (***********************************************************************)
-    \* MuxState transitions to MuxWait
-    /\  \/  /\  t.linkState = "LinkUp"
-            /\  \/  t.muxState = "Active"   /\  t.linkProber = "Standby"
-                \/  t.muxState = "Standby"  /\  t.linkProber = "Active" 
-                \/  t.muxState = "LinkWait" /\  t.linkProber # "Unknown"
-            /\  t' = [t EXCEPT !.muxState = "MuxWait"]
-        \* MuxState transitions to MuxLinkWait
-        \/  /\  t.linkProber = "Unknown"
-            /\  t.muxState = "Active"
-            /\  t' = [t EXCEPT !.muxState = "LinkWait"]
-    /\  UNCHANGED <<muxPointingTo, otherTor, heartbeatSender>>
-
-LinkManagerSwitch(t, otherTor) ==
-    /\  t.muxState = "Standby"
-    /\  t.linkProber = "Unknown"
-    /\  t' = [t EXCEPT !.muxState = "LinkWait"]
-    /\  UNCHANGED <<otherTor, muxPointingTo, heartbeatSender>>
+\* XCVRD daemon described on page 11 of the Powerpoint presentation as of 08/25/2022
 
 XCVRD(t, otherTor) ==
-\* TODO: Mux is pointing in wrong direction, when to ask where it's pointing?
-    /\  t.muxState = "MuxWait"
-    /\  \/  /\  muxPointingTo = t.name
-            /\  t' = [t EXCEPT !.muxState = "Active"]
-        \/  /\  muxPointingTo # t.name
-            /\  t' = [t EXCEPT !.muxState = "Standby"]
-    /\  UNCHANGED <<otherTor, heartbeatSender, muxPointingTo>>
+    /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
+    /\ ~t.dead                                          \* TODO Model dead XCVDR daemon separately?
+    \* /\ t.muxState = "LinkWait"
+    /\ \/ /\ mux = t.name
+          /\ t' = [t EXCEPT !.muxState = "Active"]
+       \/ /\ mux # t.name
+          /\ t' = [t EXCEPT !.muxState = "Standby"]
+       \/ /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
+
+\* State machine and transition table pages 12 & 13 of the Powerpoint presentation as of 08/25/2022
+
+MuxStateLinkWait(t, otherTor) ==
+    /\ t.muxState = "LinkWait"
+    /\ \/ /\ t.muxState = "Active"                      \* TODO This sub-action is already covered by XCVRD!2!1
+          /\ t' = [t EXCEPT !.muxState = "Active"]
+       \/ /\ t.linkProber \in {"Active", "Standby"}
+          /\ t' = [t EXCEPT !.muxState = "Standby"]     \* TODO This sub-action is already covered by XCVRD!2!2
+       \/ /\ TRUE \* MUX_XCVRD_FAIL                     \* TODO This sub-action is already covered by XCVRD!2!3
+          /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
+
+MuxStateMuxWait(t, otherTor) ==
+    /\ t.muxState = "MuxWait"
+    \* All columns for row "MuxWait" are no-op.         \* TODO This suggests that XCVRD and this action are the one and the same?
+    /\ UNCHANGED t
+
+MuxStateActive(t, otherTor) ==
+    /\ t.muxState = "Active"
+    /\ \/ /\ t.linkProber = "Standby"
+          /\ t.linkState = "LinkUp"
+          /\ t' = [t EXCEPT !.muxState = "MuxWait"]
+       \/ /\ t.linkProber = "Unknown"
+          /\ t.linkState \in {"LinkUp", "LinkDown"}
+          /\ t' = [t EXCEPT !.muxState = "LinkWait"]    \* TODO page 13 says these two actions suspends sending heartbeats, but heartbeats are nowhere reactivated.
+
+MuxStateStandby(t, otherTor) ==
+    /\ t.muxState = "Standby"
+    /\ \/ /\ t.linkProber = "Active"
+          /\ t.linkState = "LinkUp"
+          /\ t' = [t EXCEPT !.muxState = "MuxWait"]
+       \/ /\ t.linkProber = "Unknown"
+          /\ t.linkState \in {"LinkUp", "LinkDown"}
+          /\ t' = [t EXCEPT !.muxState = "LinkWait"]
+
+MuxState(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
+    /\ ~t.dead
+    /\ \/ MuxStateStandby(t, otherTor)
+       \/ MuxStateActive(t, otherTor)
+       \/ MuxStateMuxWait(t, otherTor)
+       \/ MuxStateLinkWait(t, otherTor)    
 
 \* State machine page 10 of the Powerpoint presentation as of 08/25/2022
 
@@ -215,10 +236,8 @@ ReceiveHeartbeat(t, otherTor) ==
 -----------------------------------------------------------------------------
 
 System ==
-    \/ LinkManagerCheck(torA, torB)
-    \/ LinkManagerCheck(torB, torA)
-    \/ LinkManagerSwitch(torA, torB)
-    \/ LinkManagerSwitch(torB, torA)
+    \/ MuxState(torA, torB)
+    \/ MuxState(torB, torA)
     \/ SendHeartbeat(torA)
     \/ SendHeartbeat(torB)
     \/ ReceiveHeartbeat(torA, torB)
