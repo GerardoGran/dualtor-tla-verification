@@ -40,9 +40,13 @@ LinkStates == {"LinkUp", "LinkDown"}
 \* Mux State (page 12)
 MuxStates == {"Active", "Standby", "MuxWait", "LinkWait"} \union {"MuxFailure"}
 
+\* MUX_XCVRD_ (page 11)
+XCVRDStates == {"Active", "Standby", "Fail"}
+
 ToR ==
     [ dead: BOOLEAN, 
       name: T,
+      xcvrd: XCVRDStates,
       linkManager: LMStates, 
       linkProber: LPStates,
       linkState: LinkStates,
@@ -52,6 +56,7 @@ ToR ==
 ActiveTor == 
     [ dead: {FALSE},
       name: T, 
+      xcvrd: {"Active"},
       linkManager: {"Active"},
       linkProber: {"Active"}, 
       linkState: {"LinkUp"},
@@ -67,14 +72,15 @@ Init ==
     LET InitialTor(name) == 
         [ dead            |-> FALSE,
           name            |-> name,
+          xcvrd           |-> IF name = mux THEN "Active" ELSE "Standby",
           linkManager     |-> "Checking",
           linkProber      |-> "Unknown",
           linkState       |-> "LinkDown",
           muxState        |-> "MuxWait" ]
-    IN  /\ torA = InitialTor("torA")
-        /\ torB = InitialTor("torB")
-        /\ mux \in T
+    IN  /\ mux \in T
         /\ heartbeatSender = "noResponse"
+        /\ torA = InitialTor("torA")
+        /\ torB = InitialTor("torB")
 
 \* XCVRD daemon described on page 11 of the Powerpoint presentation as of 08/25/2022
 
@@ -83,26 +89,30 @@ XCVRD(t, otherTor) ==
     /\ ~t.dead                                          \* TODO Model dead XCVDR daemon separately?
     \* /\ t.muxState = "LinkWait"
     /\ \/ /\ mux = t.name
-          /\ t' = [t EXCEPT !.muxState = "Active"]
+          /\ t' = [t EXCEPT !.xcvrd = "Active"]
        \/ /\ mux # t.name
-          /\ t' = [t EXCEPT !.muxState = "Standby"]
-       \/ /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
+          /\ t' = [t EXCEPT !.xcvrd = "Standby"]
+       \/ /\ t' = [t EXCEPT !.xcvrd = "Fail"]
 
 \* State machine and transition table pages 12 & 13 of the Powerpoint presentation as of 08/25/2022
 
 MuxStateLinkWait(t, otherTor) ==
     /\ t.muxState = "LinkWait"
-    /\ \/ /\ t.muxState = "Active"                      \* TODO This sub-action is already covered by XCVRD!2!1
-          /\ t' = [t EXCEPT !.muxState = "Active"]
-       \/ /\ t.linkProber \in {"Active", "Standby"}
-          /\ t' = [t EXCEPT !.muxState = "Standby"]     \* TODO This sub-action is already covered by XCVRD!2!2
-       \/ /\ TRUE \* MUX_XCVRD_FAIL                     \* TODO This sub-action is already covered by XCVRD!2!3
+    /\ \/ /\ t.linkProber \in {"Active", "Standby"}
+          /\ t.linkState = "LinkUp"
+          /\ t' = [t EXCEPT !.muxState = "MuxWait"]
+       \/ /\ t.xcvrd = "Fail"
           /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
 
 MuxStateMuxWait(t, otherTor) ==
     /\ t.muxState = "MuxWait"
-    \* All columns for row "MuxWait" are no-op.         \* TODO This suggests that XCVRD and this action are the one and the same?
-    /\ UNCHANGED t
+    \* All columns for row "MuxWait" are no-op.
+    /\ \/ /\ t.xcvrd = "Active"
+          /\ t' = [t EXCEPT !.muxState = "Active"]
+       \/ /\ t.xcvrd = "Standby"
+          /\ t' = [t EXCEPT !.muxState = "Standby"]
+       \/ /\ t.xcvrd = "Fail"
+          /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
 
 MuxStateActive(t, otherTor) ==
     /\ t.muxState = "Active"
