@@ -11,7 +11,7 @@ EXTENDS FiniteSets
 VARIABLES 
     torA,
     torB,
-    muxPointingTo,       \* Which ToR the MUX cable itself is pointing to 
+    mux,       \* Which ToR the MUX cable itself is pointing to
     \* TODO check real component name
     heartbeatSender
     (*******************************************************************************)
@@ -24,37 +24,57 @@ VARIABLES
     (* since the standby ToR's heartbeat will be dropped and never listened to.    *)
     (*******************************************************************************)                           
 
-vars == <<torA, torB, muxPointingTo, heartbeatSender>>
+vars == <<torA, torB, mux, heartbeatSender>>
 
-InitialTorStates == 
-    [linkManager    |-> "Checking",
-     linkProber      |-> "Unknown",
-     linkState       |-> "LinkDown",
-     muxState        |-> "MuxWait"]
+T == {"torA", "torB"}
 
+\* Link Manager (page 14)
 LMStates == {"Checking", "Active", "Standby"}
+
+\* Link Prober (page 9)
 LPStates == {"Active", "Standby", "Unknown"}
+
+\* Link Stat (page 10)
 LinkStates == {"LinkUp", "LinkDown"}
+
+\* Mux State (page 12)
 MuxStates == {"Active", "Standby", "MuxWait", "LinkWait"}
 
-\* 
-ActiveTor == [name:{"torA", "torB"}, linkManager:{"Active"}, linkProber:{"Active"}, linkState:{"LinkUp"}, muxState:{"MuxActive"}]
+ToR ==
+    [ dead: BOOLEAN, 
+      name: T,
+      linkManager: LMStates, 
+      linkProber: LPStates,
+      linkState: LinkStates,
+      muxState: MuxStates ]
+
+\* "Goal" state for a ToR.
+ActiveTor == 
+    [ dead: {FALSE},
+      name: T, 
+      linkManager: {"Active"},
+      linkProber: {"Active"}, 
+      linkState: {"LinkUp"},
+      muxState: {"MuxActive"} ]
 
 TypeOK == 
-    /\ torA \in [dead: BOOLEAN, name:{"torA"}, linkManager: LMStates, linkProber: LPStates, linkState: LinkStates, muxState: MuxStates]
-    /\ torB \in [dead: BOOLEAN, name:{"torB"}, linkManager: LMStates, linkProber: LPStates, linkState: LinkStates, muxState: MuxStates]
-    /\ heartbeatSender \in {"torA", "torB", "noResponse"} 
-    /\ muxPointingTo \in {"torA", "torB"}
+    /\ torA \in ToR
+    /\ torB \in ToR    
+    /\ mux \in T
+    /\ heartbeatSender \in (T \union {"noResponse"})
 
-Init == 
-    /\ torA = [dead |-> FALSE, name |-> "torA", linkManager |-> "Checking", linkProber |-> "Unknown", linkState |-> "LinkDown", muxState |-> "MuxWait"]
-    /\ torB = [dead |-> FALSE, name |-> "torB", linkManager |-> "Checking", linkProber |-> "Unknown", linkState |-> "LinkDown", muxState |-> "MuxWait"]
-    /\ muxPointingTo \in {"torA", "torB"}
-    /\ heartbeatSender = "noResponse"
-
-\* Transition table page 13 of the Powerpoint presentation as of 08/25/2022
-
-\* TODO Page 11 claims that XCVRD changes state depending on *events* set by LinkManager.  Where is this?
+Init ==
+    LET InitialTor(name) == 
+        [ dead            |-> FALSE,
+          name            |-> name,
+          linkManager     |-> "Checking",
+          linkProber      |-> "Unknown",
+          linkState       |-> "LinkDown",
+          muxState        |-> "MuxWait" ]
+    IN  /\ torA = InitialTor("torA")
+        /\ torA = InitialTor("torB")
+        /\ mux \in T
+        /\ heartbeatSender = "noResponse"
 
 LinkManagerCheck(t, otherTor) ==
     /\ ~t.dead
@@ -93,7 +113,7 @@ XCVRD(t, otherTor) ==
 
 LinkState(t, otherTor) ==
     /\ ~t.dead
-    /\ UNCHANGED <<otherTor, muxPointingTo, heartbeatSender>>
+    /\ UNCHANGED <<otherTor, mux, heartbeatSender>>
     \* Non-deterministically flip the link state (reacting to a kernel message)
     /\ \/ /\ t.linkState = "LinkDown"
           /\ t' = [t EXCEPT !.linkState = "LinkUp"]
@@ -136,7 +156,7 @@ LinkManagerStandby(t, otherTor) ==
 
 LinkManagerPage14(t, otherTor) ==
     /\ ~t.dead
-    /\ UNCHANGED <<otherTor, muxPointingTo, heartbeatSender>>
+    /\ UNCHANGED <<otherTor, mux, heartbeatSender>>
     /\ \/ LinkManagerChecking(t, otherTor)
        \/ LinkManagerActive(t, otherTor)
        \/ LinkManagerStandby(t, otherTor)
@@ -151,9 +171,9 @@ SendHeartbeat(t) ==
     (* Active ToR sends heartbeat to server. MUX duplicates packet and sends it *)
     (* to both ToR's                                                            *)
     (****************************************************************************)
-    /\  muxPointingTo = t.name  \* The MUX will drop traffic from ToR if it is not pointing to it
+    /\  mux = t.name  \* The MUX will drop traffic from ToR if it is not pointing to it
     /\  heartbeatSender' = t.name
-    /\  UNCHANGED <<torA, torB, muxPointingTo>>
+    /\  UNCHANGED <<torA, torB, mux>>
 
 LinkProberUnknown(t, otherTor) ==
     /\ t.linkProber = "Unknown"
@@ -187,7 +207,7 @@ ReceiveHeartbeat(t, otherTor) ==
     (****************************************************************************)
     (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
     (****************************************************************************)
-    /\  UNCHANGED <<otherTor, heartbeatSender, muxPointingTo>>
+    /\  UNCHANGED <<otherTor, heartbeatSender, mux>>
     /\  \/  LinkProberUnknown(t, otherTor)
         \/  LinkProberStandby(t, otherTor)
         \/  LinkProberActive(t, otherTor)
@@ -217,18 +237,18 @@ FailHeartbeat ==
     (* Sender fails to send heartbeat to ToR's making them go into unknown state *)
     (*****************************************************************************)
     /\  heartbeatSender' = "noResponse"
-    /\  UNCHANGED <<torA, torB, muxPointingTo>>
+    /\  UNCHANGED <<torA, torB, mux>>
 
 FailMux ==
     (******************************************************************)
     (* Failure Action for inconsistent MUX States with MuxCable State *)
     (******************************************************************)
-    /\  muxPointingTo' \in {"torA", "torB"}
+    /\  mux' \in T
     /\  UNCHANGED <<torA, torB, heartbeatSender>>
 
 FailTor(t, otherTor) ==
     /\ t' = [t EXCEPT !.dead = TRUE]
-    /\ UNCHANGED <<otherTor, heartbeatSender, muxPointingTo>>
+    /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
 
 Environment ==
     \/ FailMux
@@ -258,7 +278,7 @@ THEOREM Spec => AtMostOneActive /\ RepeatedlyOneActive
 
 Alias ==
     [
-        torA |-> torA, torB |-> torB, muxPointingTo |-> muxPointingTo,  heartbeatSender |-> heartbeatSender,
+        torA |-> torA, torB |-> torB, mux |-> mux,  heartbeatSender |-> heartbeatSender,
         active |-> { t \in {torA, torB} : t.linkManager = "Active"}
     ]
 =============================================================================
