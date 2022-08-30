@@ -92,7 +92,6 @@ XCVRD(t, otherTor) ==
           /\ t' = [t EXCEPT !.xcvrd = "Active"]
        \/ /\ mux # t.name
           /\ t' = [t EXCEPT !.xcvrd = "Standby"]
-       \/ /\ t' = [t EXCEPT !.xcvrd = "Fail"]
 
 \* State machine and transition table pages 12 & 13 of the Powerpoint presentation as of 08/25/2022
 
@@ -279,11 +278,17 @@ FailTor(t, otherTor) ==
     /\ t' = [t EXCEPT !.dead = TRUE]
     /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
 
+FailXCVRD(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
+    /\ t' = [t EXCEPT !.xcvrd = "Fail"]
+
 Environment ==
     \/ FailMux
     \/ FailHeartbeat
     \/ FailTor(torA, torB)
     \/ FailTor(torB, torA)
+    \/ FailXCVRD(torA, torB)
+    \/ FailXCVRD(torB, torA)
 
 -----------------------------------------------------------------------------
 
