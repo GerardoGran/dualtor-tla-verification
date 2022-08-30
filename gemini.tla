@@ -144,11 +144,7 @@ MuxState(t, otherTor) ==
 LinkState(t, otherTor) ==
     /\ ~t.dead
     /\ UNCHANGED <<otherTor, mux, heartbeatSender>>
-    \* Non-deterministically flip the link state (reacting to a kernel message)
-    /\ \/ /\ t.linkState = "LinkDown"
-          /\ t' = [t EXCEPT !.linkState = "LinkUp"]
-       \/ /\ t.linkState = "LinkUp"
-          /\ t' = [t EXCEPT !.linkState = "LinkDown"]
+    /\ t' = [t EXCEPT !.linkState = "LinkUp"]
 
 \* State machine page 14 of the Powerpoint presentation as of 08/25/2022
 
@@ -280,7 +276,11 @@ FailTor(t, otherTor) ==
 
 FailXCVRD(t, otherTor) ==
     /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
-    /\ t' = [t EXCEPT !.xcvrd = "Fail"]
+
+FailLinkState(t, otherTor) ==
+    /\ ~t.dead
+    /\ UNCHANGED <<otherTor, mux, heartbeatSender>>
+    /\ t' = [t EXCEPT !.linkState = "LinkDown"]
 
 Environment ==
     \/ FailMux
@@ -289,6 +289,8 @@ Environment ==
     \/ FailTor(torB, torA)
     \/ FailXCVRD(torA, torB)
     \/ FailXCVRD(torB, torA)
+    \/ FailLinkState(torA, torB)
+    \/ FailLinkState(torB, torA)
 
 -----------------------------------------------------------------------------
 
