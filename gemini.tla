@@ -47,6 +47,7 @@ ToR ==
     [ dead: BOOLEAN, 
       name: T,
       xcvrd: XCVRDStates,
+      heartbeat: {"on", "off"},
       linkManager: LMStates, 
       linkProber: LPStates,
       linkState: LinkStates,
@@ -57,6 +58,7 @@ ActiveTor ==
     [ dead: {FALSE},
       name: T, 
       xcvrd: {"Active"},
+      heartbeat: {"on"},
       linkManager: {"Active"},
       linkProber: {"Active"}, 
       linkState: {"LinkUp"},
@@ -73,6 +75,7 @@ Init ==
         [ dead            |-> FALSE,
           name            |-> name,
           xcvrd           |-> IF name = mux THEN "Active" ELSE "Standby",
+          heartbeat       |-> "on",
           linkManager     |-> "Checking",
           linkProber      |-> "Unknown",
           linkState       |-> "LinkDown",
@@ -99,7 +102,7 @@ MuxStateLinkWait(t, otherTor) ==
     /\ t.muxState = "LinkWait"
     /\ \/ /\ t.linkProber \in {"Active", "Standby"}
           /\ t.linkState = "LinkUp"
-          /\ t' = [t EXCEPT !.muxState = "MuxWait"]
+          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.heartbeat = "on"]
        \/ /\ t.xcvrd = "Fail"
           /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
 
@@ -120,6 +123,7 @@ MuxStateActive(t, otherTor) ==
           /\ t' = [t EXCEPT !.muxState = "MuxWait"]
        \/ /\ t.linkProber = "Unknown"
           /\ t.linkState \in {"LinkUp", "LinkDown"}
+          /\ t.heartbeat = "off"
           /\ t' = [t EXCEPT !.muxState = "LinkWait"]    \* TODO page 13 says these two actions suspends sending heartbeats, but heartbeats are nowhere reactivated.
 
 MuxStateStandby(t, otherTor) ==
@@ -193,6 +197,7 @@ LinkManagerPage14(t, otherTor) ==
 
 SendHeartbeat(t) ==
     /\ ~t.dead
+    /\ t.heartbeat = "on"
     (****************************************************************************)
     (* Active ToR sends heartbeat to server. MUX duplicates packet and sends it *)
     (* to both ToR's                                                            *)
