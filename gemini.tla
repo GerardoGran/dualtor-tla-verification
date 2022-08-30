@@ -313,6 +313,6 @@ THEOREM Spec => AtMostOneActive /\ RepeatedlyOneActive
 Alias ==
     [
         torA |-> torA, torB |-> torB, mux |-> mux,  heartbeatSender |-> heartbeatSender,
-        active |-> { t \in {torA, torB} : t.linkManager = "Active"}
+        active |-> { t \in {torA, torB} : t \in ActiveTor}
     ]
 =============================================================================
