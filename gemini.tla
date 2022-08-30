@@ -60,7 +60,7 @@ ActiveTor ==
       linkManager: {"Active"},
       linkProber: {"Active"}, 
       linkState: {"LinkUp"},
-      muxState: {"MuxActive"} ]
+      muxState: {"Active"} ]
 
 TypeOK == 
     /\ torA \in ToR
