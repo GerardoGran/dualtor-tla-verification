@@ -41,7 +41,7 @@ LinkStates == {"LinkUp", "LinkDown"}
 MuxStates == {"Active", "Standby", "MuxWait", "LinkWait"} \union {"MuxFailure"}
 
 \* MUX_XCVRD_ (page 11)
-XCVRDStates == {"Active", "Standby", "Fail"}
+XCVRDStates == {"Active", "Standby", "Fail"} \*TODO s/Fail/Unknown ?
 
 ToR ==
     [ dead: BOOLEAN, 
@@ -276,6 +276,10 @@ FailTor(t, otherTor) ==
 
 FailXCVRD(t, otherTor) ==
     /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
+    \* According to Vaibhav Dahiya, the mux returns "Unknown" in case of failure, 
+    \* which, subsequently, causes the ToR to go to "Standby".
+    \* /\ t' = [t EXCEPT !.xcvrd = "Fail"]
+    /\ t' = [t EXCEPT !.xcvrd = "Standby"]
 
 FailLinkState(t, otherTor) ==
     /\ ~t.dead
