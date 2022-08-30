@@ -29,19 +29,19 @@ vars == <<torA, torB, mux, heartbeatSender>>
 T == {"torA", "torB"}
 
 \* Link Manager (page 14)
-LMStates == {"Checking", "Active", "Standby"} \union {"Failure"}
+LMStates == {"LMChecking", "LMActive", "LMStandby"} \union {"LMFailure"}
 
 \* Link Prober (page 9)
-LPStates == {"Active", "Standby", "Unknown"}
+LPStates == {"LPActive", "LPStandby", "LPUnknown"}
 
 \* Link Stat (page 10)
 LinkStates == {"LinkUp", "LinkDown"}
 
 \* Mux State (page 12)
-MuxStates == {"Active", "Standby", "MuxWait", "LinkWait"} \union {"MuxFailure"}
+MuxStates == {"MSActive", "MSStandby", "MSMuxWait", "MSLinkWait"} \union {"MSMuxFailure"}
 
 \* MUX_XCVRD_ (page 11)
-XCVRDStates == {"Active", "Standby", "Fail"} \*TODO s/Fail/Unknown ?
+XCVRDStates == {"XCVRDActive", "XCVRDStandby", "XCVRDUnknown"} \*TODO s/Fail/Unknown ?
 
 ToR ==
     [ dead: BOOLEAN, 
@@ -57,12 +57,12 @@ ToR ==
 ActiveTor == 
     [ dead: {FALSE},
       name: T, 
-      xcvrd: {"Active"},
+      xcvrd: {"XCVRDActive"},
       heartbeat: {"on"},
-      linkManager: {"Active"},
-      linkProber: {"Active"}, 
+      linkManager: {"LMActive"},
+      linkProber: {"LPActive"}, 
       linkState: {"LinkUp"},
-      muxState: {"Active"} ]
+      muxState: {"MSActive"} ]
 
 TypeOK == 
     /\ torA \in ToR
@@ -74,12 +74,12 @@ Init ==
     LET InitialTor(name) == 
         [ dead            |-> FALSE,
           name            |-> name,
-          xcvrd           |-> IF name = mux THEN "Active" ELSE "Standby",
+          xcvrd           |-> IF name = mux THEN "XCVRDActive" ELSE "XCVRDStandby",
           heartbeat       |-> "on",
-          linkManager     |-> "Checking",
-          linkProber      |-> "Unknown",
+          linkManager     |-> "LMChecking",
+          linkProber      |-> "LPUnknown",
           linkState       |-> "LinkDown",
-          muxState        |-> "MuxWait" ]
+          muxState        |-> "MSMuxWait" ]
     IN  /\ mux \in T
         /\ heartbeatSender = "noResponse"
         /\ torA = InitialTor("torA")
@@ -90,50 +90,50 @@ Init ==
 XCVRD(t, otherTor) ==
     /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
     /\ ~t.dead                                          \* TODO Model dead XCVDR daemon separately?
-    \* /\ t.muxState = "LinkWait"
+    \* /\ t.muxState = "MSLinkWait"
     /\ \/ /\ mux = t.name
-          /\ t' = [t EXCEPT !.xcvrd = "Active"]
+          /\ t' = [t EXCEPT !.xcvrd = "XCVRDActive"]
        \/ /\ mux # t.name
-          /\ t' = [t EXCEPT !.xcvrd = "Standby"]
+          /\ t' = [t EXCEPT !.xcvrd = "XCVRDStandby"]
 
 \* State machine and transition table pages 12 & 13 of the Powerpoint presentation as of 08/25/2022
 
 MuxStateLinkWait(t, otherTor) ==
-    /\ t.muxState = "LinkWait"
-    /\ \/ /\ t.linkProber \in {"Active", "Standby"}
+    /\ t.muxState = "MSLinkWait"
+    /\ \/ /\ t.linkProber \in {"LPActive", "LPStandby"}
           /\ t.linkState = "LinkUp"
-          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.heartbeat = "on"]
-       \/ /\ t.xcvrd = "Fail"
-          /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
+          /\ t' = [t EXCEPT !.muxState = "MSMuxWait", !.heartbeat = "on"]
+       \/ /\ t.xcvrd = "XCVRDUnknown"
+          /\ t' = [t EXCEPT !.muxState = "MSMuxFailure"]
 
 MuxStateMuxWait(t, otherTor) ==
-    /\ t.muxState = "MuxWait"
+    /\ t.muxState = "MSMuxWait"
     \* All columns for row "MuxWait" are no-op.
-    /\ \/ /\ t.xcvrd = "Active"
-          /\ t' = [t EXCEPT !.muxState = "Active"]
-       \/ /\ t.xcvrd = "Standby"
-          /\ t' = [t EXCEPT !.muxState = "Standby"]
-       \/ /\ t.xcvrd = "Fail"
-          /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
+    /\ \/ /\ t.xcvrd = "XCVRDActive"
+          /\ t' = [t EXCEPT !.muxState = "MSActive"]
+       \/ /\ t.xcvrd = "XCVRDStandby"
+          /\ t' = [t EXCEPT !.muxState = "MSStandby"]
+       \/ /\ t.xcvrd = "XCVRDUnknown"
+          /\ t' = [t EXCEPT !.muxState = "MSMuxFailure"]
 
 MuxStateActive(t, otherTor) ==
-    /\ t.muxState = "Active"
-    /\ \/ /\ t.linkProber = "Standby"
+    /\ t.muxState = "MSActive"
+    /\ \/ /\ t.linkProber = "LPStandby"
           /\ t.linkState = "LinkUp"
-          /\ t' = [t EXCEPT !.muxState = "MuxWait"]
-       \/ /\ t.linkProber = "Unknown"
+          /\ t' = [t EXCEPT !.muxState = "MSMuxWait"]
+       \/ /\ t.linkProber = "LPUnknown"
           /\ t.linkState \in {"LinkUp", "LinkDown"}
           /\ t.heartbeat = "off"
-          /\ t' = [t EXCEPT !.muxState = "LinkWait"]    \* TODO page 13 says these two actions suspends sending heartbeats, but heartbeats are nowhere reactivated.
+          /\ t' = [t EXCEPT !.muxState = "MSLinkWait"]    \* TODO page 13 says these two actions suspends sending heartbeats, but heartbeats are nowhere reactivated.
 
 MuxStateStandby(t, otherTor) ==
-    /\ t.muxState = "Standby"
-    /\ \/ /\ t.linkProber = "Active"
+    /\ t.muxState = "MSStandby"
+    /\ \/ /\ t.linkProber = "LPActive"
           /\ t.linkState = "LinkUp"
-          /\ t' = [t EXCEPT !.muxState = "MuxWait"]
-       \/ /\ t.linkProber = "Unknown"
+          /\ t' = [t EXCEPT !.muxState = "MSMuxWait"]
+       \/ /\ t.linkProber = "LPUnknown"
           /\ t.linkState \in {"LinkUp", "LinkDown"}
-          /\ t' = [t EXCEPT !.muxState = "LinkWait"]
+          /\ t' = [t EXCEPT !.muxState = "MSLinkWait"]
 
 MuxState(t, otherTor) ==
     /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
@@ -153,36 +153,36 @@ LinkState(t, otherTor) ==
 \* State machine page 14 of the Powerpoint presentation as of 08/25/2022
 
 LinkManagerChecking(t, otherTor) ==
-    /\ t.linkManager = "Checking"
-    /\ \/ /\ t.muxState = "Active"
+    /\ t.linkManager = "LMChecking"
+    /\ \/ /\ t.muxState = "MSActive"
           /\ t.linkState = "LinkUp"
-          /\ t.linkProber = "Active"
-          /\ t' = [t EXCEPT !.linkManager = "Active"]
-       \/ /\ t.muxState = "Standby"
+          /\ t.linkProber = "LPActive"
+          /\ t' = [t EXCEPT !.linkManager = "LMActive"]
+       \/ /\ t.muxState = "MSStandby"
           /\ t.linkState = "LinkUp"
-          /\ t.linkProber = "Standby"
-          /\ t' = [t EXCEPT !.linkManager = "Standby"]
-       \* TODO MuxFailure and Failure are no enums above!
-       \/ /\ t.muxState = "MuxFailure"
+          /\ t.linkProber = "LPStandby"
+          /\ t' = [t EXCEPT !.linkManager = "LMStandby"]
+       \* TODO MSMuxFailure and Failure are no enums above!
+       \/ /\ t.muxState = "MSMuxFailure"
           /\ t' = [t EXCEPT !.linkManager = "Failure"]
 
 LinkManagerActive(t, otherTor) ==
-    /\ t.linkManager = "Active"
-    /\ \/ /\ t.muxState = "Active"
+    /\ t.linkManager = "LMActive"
+    /\ \/ /\ t.muxState = "MSActive"
           /\ t.linkState = "LinkUp"
-          /\ t.linkProber \in {"Standby", "Unknown"}
-          /\ t' = [t EXCEPT !.linkManager = "Checking"]
-       \/ /\ t.muxState = "Active"
+          /\ t.linkProber \in {"LPStandby", "LPUnknown"}
+          /\ t' = [t EXCEPT !.linkManager = "LMChecking"]
+       \/ /\ t.muxState = "MSActive"
           /\ t.linkState = "LinkDown"
-          /\ t.linkProber = "Unknown"
-          /\ t' = [t EXCEPT !.linkManager = "Checking"]
+          /\ t.linkProber = "LPUnknown"
+          /\ t' = [t EXCEPT !.linkManager = "LMChecking"]
 
 LinkManagerStandby(t, otherTor) ==
-    /\ t.linkManager = "Standby"
-    /\ t.muxState = "Standby"
+    /\ t.linkManager = "LMStandby"
+    /\ t.muxState = "MSStandby"
     /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "Unknown" \* ??? Go to linkManager Active if linkProber is "unknown"?
-    /\ t' = [t EXCEPT !.linkManager = "Active"]
+    /\ t.linkProber = "LPUnknown" \* ??? Go to linkManager Active if linkProber is "unknown"?
+    /\ t' = [t EXCEPT !.linkManager = "LMActive"]
 
 LinkManagerPage14(t, otherTor) ==
     /\ ~t.dead
@@ -207,31 +207,31 @@ SendHeartbeat(t) ==
     /\  UNCHANGED <<torA, torB, mux>>
 
 LinkProberUnknown(t, otherTor) ==
-    /\ t.linkProber = "Unknown"
+    /\ t.linkProber = "LPUnknown"
     /\ \/ /\ t.name = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Active"]
+          /\ t' = [t EXCEPT !.linkProber = "LPActive"]
        \/ /\ otherTor.name = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Standby"]
+          /\ t' = [t EXCEPT !.linkProber = "LPStandby"]
        \/ /\ "noResponse" = heartbeatSender
           /\ UNCHANGED t
 
 LinkProberStandby(t, otherTor) ==
-    /\ t.linkProber = "Standby"
+    /\ t.linkProber = "LPStandby"
     /\ \/ /\ t.name = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Active"]
+          /\ t' = [t EXCEPT !.linkProber = "LPActive"]
        \/ /\ otherTor.name = heartbeatSender
           /\ UNCHANGED t
        \/ /\ "noResponse" = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Unknown"]
+          /\ t' = [t EXCEPT !.linkProber = "LPUnknown"]
 
 LinkProberActive(t, otherTor) ==
-    /\ t.linkProber = "Active"
+    /\ t.linkProber = "LPActive"
     /\ \/ /\ t.name = heartbeatSender
           /\ UNCHANGED t
        \/ /\ otherTor.name = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Standby"]
+          /\ t' = [t EXCEPT !.linkProber = "LPStandby"]
        \/ /\ "noResponse" = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Unknown"]
+          /\ t' = [t EXCEPT !.linkProber = "LPUnknown"]
 
 ReceiveHeartbeat(t, otherTor) ==
     /\ ~t.dead
@@ -283,19 +283,32 @@ FailXCVRD(t, otherTor) ==
     /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
     \* According to Vaibhav Dahiya, the mux returns "Unknown" in case of failure, 
     \* which, subsequently, causes the ToR to go to "Standby".
-    \* /\ t' = [t EXCEPT !.xcvrd = "Fail"]
-    /\ t' = [t EXCEPT !.xcvrd = "Standby"]
+    \* /\ t' = [t EXCEPT !.xcvrd = "XCVRDUnknown"]
+    /\ t' = [t EXCEPT !.xcvrd = "XCVRDStandby"]
 
 FailLinkState(t, otherTor) ==
     /\ ~t.dead
     /\ UNCHANGED <<otherTor, mux, heartbeatSender>>
     /\ t' = [t EXCEPT !.linkState = "LinkDown"]
 
+\* RebootTor(t, otherTor) ==
+\*     /\ t.dead = TRUE
+\*     /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
+\*     /\ t' = [ dead          |-> FALSE,
+\*             name            |-> t.name,
+\*             xcvrd           |-> IF t.name = mux THEN "XCVRDActive" ELSE "XCVRDStandby",
+\*             linkManager     |-> "LMChecking",
+\*             linkProber      |-> "LPUnknown",
+\*             linkState       |-> "LinkDown",
+\*             muxState        |-> "MSMuxWait" ]
+            
 Environment ==
     \/ FailMux
     \/ FailHeartbeat
     \/ FailTor(torA, torB)
     \/ FailTor(torB, torA)
+    \* \/ RebootTor(torA, torB)
+    \* \/ RebootTor(torB, torA)
     \/ FailXCVRD(torA, torB)
     \/ FailXCVRD(torB, torA)
     \/ FailLinkState(torA, torB)
