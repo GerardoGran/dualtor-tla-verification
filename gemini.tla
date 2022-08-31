@@ -47,7 +47,6 @@ ToR ==
       xcvrd: XCVRDStates,
       heartbeat: {"on", "off"},
       heartbeatIn: SUBSET (T \union {"noResponse"}),
-      linkManager: LMStates, 
       linkProber: LPStates,
       linkState: LinkStates,
       muxState: MuxStates ]
@@ -75,7 +74,6 @@ Init ==
           xcvrd           |-> IF name = mux.active THEN "Active" ELSE "Standby",
           heartbeat       |-> "on",
           heartbeatIn     |-> {},
-          linkManager     |-> "Checking",
           linkProber      |-> "Unknown",
           linkState       |-> "LinkDown",
           muxState        |-> "MuxWait" ]
@@ -158,47 +156,6 @@ LinkState(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
     /\ t' = [t EXCEPT !.linkState = "LinkUp"]
 
-\* State machine page 14 of the Powerpoint presentation as of 08/25/2022
-
-LinkManagerChecking(t, otherTor) ==
-    /\ t.linkManager = "Checking"
-    /\ \/ /\ t.muxState = "Active"
-          /\ t.linkState = "LinkUp"
-          /\ t.linkProber = "Active"
-          /\ t' = [t EXCEPT !.linkManager = "Active"]
-       \/ /\ t.muxState = "Standby"
-          /\ t.linkState = "LinkUp"
-          /\ t.linkProber = "Standby"
-          /\ t' = [t EXCEPT !.linkManager = "Standby"]
-       \* TODO MuxFailure and Failure are no enums above!
-       \/ /\ t.muxState = "MuxFailure"
-          /\ t' = [t EXCEPT !.linkManager = "Failure"]
-
-LinkManagerActive(t, otherTor) ==
-    /\ t.linkManager = "Active"
-    /\ \/ /\ t.muxState = "Active"
-          /\ t.linkState = "LinkUp"
-          /\ t.linkProber \in {"Standby", "Unknown"}
-          /\ t' = [t EXCEPT !.linkManager = "Checking"]
-       \/ /\ t.muxState = "Active"
-          /\ t.linkState = "LinkDown"
-          /\ t.linkProber = "Unknown"
-          /\ t' = [t EXCEPT !.linkManager = "Checking"]
-
-LinkManagerStandby(t, otherTor) ==
-    /\ t.linkManager = "Standby"
-    /\ t.muxState = "Standby"
-    /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "Unknown" \* ??? Go to linkManager Active if linkProber is "unknown"?
-    /\ t' = [t EXCEPT !.linkManager = "Active"]
-
-LinkManagerPage14(t, otherTor) ==
-    /\ ~t.dead
-    /\ UNCHANGED <<otherTor, mux>>
-    /\ \/ LinkManagerChecking(t, otherTor)
-       \/ LinkManagerActive(t, otherTor)
-       \/ LinkManagerStandby(t, otherTor)
-
 -----------------------------------------------------------------------------
 
 \* State machine page 09 of the Powerpoint presentation as of 08/25/2022
@@ -278,8 +235,6 @@ System ==
     \/ SendHeartbeat(torB)
     \/ ReceiveHeartbeat(torA, torB)
     \/ ReceiveHeartbeat(torB, torA)
-    \/ LinkManagerPage14(torA, torB)
-    \/ LinkManagerPage14(torB, torA)
     \/ LinkState(torA, torB)
     \/ LinkState(torB, torA)
     \/ XCVRD(torA, torB)
