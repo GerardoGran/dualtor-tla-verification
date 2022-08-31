@@ -100,7 +100,8 @@ XCVRD(t, otherTor) ==
 \* State machine and transition table pages 12 & 13 of the Powerpoint presentation as of 08/25/2022
 
 MuxStateLinkWait(t, otherTor) ==
-    /\ UNCHANGED mux
+    /\ UNCHANGED <<mux, otherTor>>
+    /\ ~t.dead
     /\ t.muxState = "LinkWait"
     /\ \/ /\ t.linkProber \in {"Active", "Standby"}
           /\ t.linkState = "LinkUp"
@@ -109,7 +110,8 @@ MuxStateLinkWait(t, otherTor) ==
           /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
 
 MuxStateMuxWait(t, otherTor) ==
-    /\ UNCHANGED mux
+    /\ UNCHANGED <<mux, otherTor>>
+    /\ ~t.dead
     /\ t.muxState = "MuxWait"
     \* All columns for row "MuxWait" are no-op.
     /\ \/ /\ t.xcvrd = "Active"
@@ -120,7 +122,8 @@ MuxStateMuxWait(t, otherTor) ==
           /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
 
 MuxStateActive(t, otherTor) ==
-    /\ UNCHANGED mux
+    /\ UNCHANGED <<mux, otherTor>>
+    /\ ~t.dead
     /\ t.muxState = "Active"
     /\ \/ /\ t.linkProber = "Standby"
           /\ t.linkState = "LinkUp"
@@ -131,6 +134,8 @@ MuxStateActive(t, otherTor) ==
           /\ t' = [t EXCEPT !.muxState = "LinkWait"]    \* TODO page 13 says these two actions suspends sending heartbeats, but heartbeats are nowhere reactivated.
 
 MuxStateStandby(t, otherTor) ==
+    /\ UNCHANGED <<otherTor>>
+    /\ ~t.dead
     /\ t.muxState = "Standby"
     /\ \/ /\ t.linkProber = "Active"
           /\ t.linkState = "LinkUp"
@@ -142,14 +147,6 @@ MuxStateStandby(t, otherTor) ==
           /\ \/ /\ mux.active = mux.next
                 /\ mux' = [ mux EXCEPT !.next = t.name ]
              \/ UNCHANGED mux
-
-MuxState(t, otherTor) ==
-    /\ UNCHANGED <<otherTor, heartbeatSender>>
-    /\ ~t.dead
-    /\ \/ MuxStateStandby(t, otherTor)
-       \/ MuxStateActive(t, otherTor)
-       \/ MuxStateMuxWait(t, otherTor)
-       \/ MuxStateLinkWait(t, otherTor)    
 
 \* State machine page 10 of the Powerpoint presentation as of 08/25/2022
 
@@ -262,8 +259,14 @@ MuxXCVRD ==
 
 System ==
     \/ MuxXCVRD
-    \/ MuxState(torA, torB)
-    \/ MuxState(torB, torA)
+    \/ MuxStateStandby(torA, torB)
+    \/ MuxStateActive(torA, torB)
+    \/ MuxStateMuxWait(torA, torB)
+    \/ MuxStateLinkWait(torA, torB)    
+    \/ MuxStateStandby(torB, torA)
+    \/ MuxStateActive(torB, torA)
+    \/ MuxStateMuxWait(torB, torA)
+    \/ MuxStateLinkWait(torB, torA)    
     \/ SendHeartbeat(torA)
     \/ SendHeartbeat(torB)
     \/ ReceiveHeartbeat(torA, torB)
