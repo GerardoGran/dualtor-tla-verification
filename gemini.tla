@@ -140,7 +140,11 @@ MuxStateStandby(t, otherTor) ==
           /\ t' = [t EXCEPT !.muxState = "MuxWait"]
           /\ UNCHANGED mux
        \/ /\ t.linkProber = "Unknown"
-          /\ t.linkState \in {"LinkUp", "LinkDown"}
+          /\ t.linkState \in {"LinkDown"}
+          /\ t' = [t EXCEPT !.muxState = "LinkWait"]
+          /\ UNCHANGED mux
+       \/ /\ t.linkProber = "Unknown"
+          /\ t.linkState \in {"LinkUp"}
           /\ t' = [t EXCEPT !.muxState = "LinkWait"]
           /\ \/ /\ mux.active = mux.next
                 /\ mux' = [ mux EXCEPT !.next = t.name ]
