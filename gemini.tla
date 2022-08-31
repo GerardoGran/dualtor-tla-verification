@@ -152,7 +152,7 @@ MuxStateStandby(t, otherTor) ==
 
 LinkState(t, otherTor) ==
     /\ ~t.dead
-    /\ UNCHANGED <<otherTor, mux, heartbeatSender>>
+    /\ t.linkState = "LinkDown" \* unnecessary, because going from LinkUp to LinkUp is just (finite) stuttering.  However, this conjunct prevent the debugger from evaluating this action when it is stuttering.
     /\ t' = [t EXCEPT !.linkState = "LinkUp"]
 
 \* State machine page 14 of the Powerpoint presentation as of 08/25/2022
