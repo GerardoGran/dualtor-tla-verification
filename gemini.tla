@@ -67,20 +67,20 @@ ActiveTor ==
 TypeOK == 
     /\ torA \in ToR
     /\ torB \in ToR    
-    /\ mux \in T
+    /\ mux \in [ active: T, next: T ]
     /\ heartbeatSender \in (T \union {"noResponse"})
 
 Init ==
     LET InitialTor(name) == 
         [ dead            |-> FALSE,
           name            |-> name,
-          xcvrd           |-> IF name = mux THEN "Active" ELSE "Standby",
+          xcvrd           |-> IF name = mux.active THEN "Active" ELSE "Standby",
           heartbeat       |-> "on",
           linkManager     |-> "Checking",
           linkProber      |-> "Unknown",
           linkState       |-> "LinkDown",
           muxState        |-> "MuxWait" ]
-    IN  /\ mux \in T
+    IN  /\ mux \in [ active: T, next: T ]
         /\ heartbeatSender = "noResponse"
         /\ torA = InitialTor("torA")
         /\ torB = InitialTor("torB")
@@ -91,14 +91,15 @@ XCVRD(t, otherTor) ==
     /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
     /\ ~t.dead                                          \* TODO Model dead XCVDR daemon separately?
     \* /\ t.muxState = "LinkWait"
-    /\ \/ /\ mux = t.name
+    /\ \/ /\ mux.active = t.name
           /\ t' = [t EXCEPT !.xcvrd = "Active"]
-       \/ /\ mux # t.name
+       \/ /\ mux.active # t.name
           /\ t' = [t EXCEPT !.xcvrd = "Standby"]
 
 \* State machine and transition table pages 12 & 13 of the Powerpoint presentation as of 08/25/2022
 
 MuxStateLinkWait(t, otherTor) ==
+    /\ UNCHANGED mux
     /\ t.muxState = "LinkWait"
     /\ \/ /\ t.linkProber \in {"Active", "Standby"}
           /\ t.linkState = "LinkUp"
@@ -107,6 +108,7 @@ MuxStateLinkWait(t, otherTor) ==
           /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
 
 MuxStateMuxWait(t, otherTor) ==
+    /\ UNCHANGED mux
     /\ t.muxState = "MuxWait"
     \* All columns for row "MuxWait" are no-op.
     /\ \/ /\ t.xcvrd = "Active"
@@ -117,6 +119,7 @@ MuxStateMuxWait(t, otherTor) ==
           /\ t' = [t EXCEPT !.muxState = "MuxFailure"]
 
 MuxStateActive(t, otherTor) ==
+    /\ UNCHANGED mux
     /\ t.muxState = "Active"
     /\ \/ /\ t.linkProber = "Standby"
           /\ t.linkState = "LinkUp"
@@ -131,12 +134,14 @@ MuxStateStandby(t, otherTor) ==
     /\ \/ /\ t.linkProber = "Active"
           /\ t.linkState = "LinkUp"
           /\ t' = [t EXCEPT !.muxState = "MuxWait"]
+          /\ UNCHANGED mux
        \/ /\ t.linkProber = "Unknown"
           /\ t.linkState \in {"LinkUp", "LinkDown"}
           /\ t' = [t EXCEPT !.muxState = "LinkWait"]
+          /\ mux' = [ mux EXCEPT !.next = t.name ]
 
 MuxState(t, otherTor) ==
-    /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
+    /\ UNCHANGED <<otherTor, heartbeatSender>>
     /\ ~t.dead
     /\ \/ MuxStateStandby(t, otherTor)
        \/ MuxStateActive(t, otherTor)
@@ -202,7 +207,7 @@ SendHeartbeat(t) ==
     (* Active ToR sends heartbeat to server. MUX duplicates packet and sends it *)
     (* to both ToR's                                                            *)
     (****************************************************************************)
-    /\  mux = t.name  \* The MUX will drop traffic from ToR if it is not pointing to it
+    /\  mux.active = t.name  \* The MUX will drop traffic from ToR if it is not pointing to it
     /\  heartbeatSender' = t.name
     /\  UNCHANGED <<torA, torB, mux>>
 
@@ -243,9 +248,15 @@ ReceiveHeartbeat(t, otherTor) ==
         \/  LinkProberStandby(t, otherTor)
         \/  LinkProberActive(t, otherTor)
 
+MuxXCVRD ==
+    /\ UNCHANGED <<torA, torB, heartbeatSender>>
+    /\ mux.active # mux.next \* redundant
+    /\ mux' = [ mux EXCEPT !.active = mux.next ]
+
 -----------------------------------------------------------------------------
 
 System ==
+    \/ MuxXCVRD
     \/ MuxState(torA, torB)
     \/ MuxState(torB, torA)
     \/ SendHeartbeat(torA)
@@ -272,7 +283,7 @@ FailMux ==
     (******************************************************************)
     (* Failure Action for inconsistent MUX States with MuxCable State *)
     (******************************************************************)
-    /\  mux' \in T
+    /\  mux' \in [ active: T, next: T ]
     /\  UNCHANGED <<torA, torB, heartbeatSender>>
 
 FailTor(t, otherTor) ==
