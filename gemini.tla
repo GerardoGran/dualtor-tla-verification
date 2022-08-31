@@ -90,6 +90,7 @@ Init ==
 XCVRD(t, otherTor) ==
     /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
     /\ ~t.dead                                          \* TODO Model dead XCVDR daemon separately?
+    /\ mux.active = mux.next
     \* /\ t.muxState = "LinkWait"
     /\ \/ /\ mux.active = t.name
           /\ t' = [t EXCEPT !.xcvrd = "Active"]
@@ -138,7 +139,9 @@ MuxStateStandby(t, otherTor) ==
        \/ /\ t.linkProber = "Unknown"
           /\ t.linkState \in {"LinkUp", "LinkDown"}
           /\ t' = [t EXCEPT !.muxState = "LinkWait"]
-          /\ mux' = [ mux EXCEPT !.next = t.name ]
+          /\ \/ /\ mux.active = mux.next
+                /\ mux' = [ mux EXCEPT !.next = t.name ]
+             \/ UNCHANGED mux
 
 MuxState(t, otherTor) ==
     /\ UNCHANGED <<otherTor, heartbeatSender>>
@@ -202,6 +205,7 @@ LinkManagerPage14(t, otherTor) ==
 
 SendHeartbeat(t) ==
     /\ ~t.dead
+    /\ t.linkState = "LinkUp"
     /\ t.heartbeat = "on"
     (****************************************************************************)
     (* Active ToR sends heartbeat to server. MUX duplicates packet and sends it *)
@@ -240,6 +244,7 @@ LinkProberActive(t, otherTor) ==
 
 ReceiveHeartbeat(t, otherTor) ==
     /\ ~t.dead
+    /\ t.linkState = "LinkUp"
     (****************************************************************************)
     (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
     (****************************************************************************)
