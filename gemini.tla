@@ -79,7 +79,7 @@ Init ==
           linkProber      |-> "Unknown",
           linkState       |-> "LinkDown",
           muxState        |-> "MuxWait" ]
-    IN  /\ mux \in [ active: T, next: T ]
+    IN  /\ mux \in {f \in [ active: T, next: T ]: f.active = f.next}
         /\ torA = InitialTor("torA")
         /\ torB = InitialTor("torB")
 
