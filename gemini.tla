@@ -11,9 +11,7 @@ EXTENDS FiniteSets
 VARIABLES 
     torA,
     torB,
-    mux,       \* Which ToR the MUX cable itself is pointing to
-    \* TODO check real component name
-    heartbeatSender
+    mux       \* Which ToR the MUX cable itself is pointing to
     (*******************************************************************************)
     (* LinkProber knows wether the TOR it's hosted in should be active or standby  *)
     (* by listening to the active ToR's heartbeat that is sent to both ToR's. It   *)
@@ -24,7 +22,7 @@ VARIABLES
     (* since the standby ToR's heartbeat will be dropped and never listened to.    *)
     (*******************************************************************************)                           
 
-vars == <<torA, torB, mux, heartbeatSender>>
+vars == <<torA, torB, mux>>
 
 T == {"torA", "torB"}
 
@@ -48,6 +46,7 @@ ToR ==
       name: T,
       xcvrd: XCVRDStates,
       heartbeat: {"on", "off"},
+      heartbeatIn: SUBSET (T \union {"noResponse"}),
       linkManager: LMStates, 
       linkProber: LPStates,
       linkState: LinkStates,
@@ -59,7 +58,7 @@ ActiveTor ==
       name: T, 
       xcvrd: {"Active"},
       heartbeat: {"on"},
-      linkManager: {"Active"},
+      heartbeatIn: SUBSET (T \union {"noResponse"}),
       linkProber: {"Active"}, 
       linkState: {"LinkUp"},
       muxState: {"Active"} ]
@@ -68,7 +67,6 @@ TypeOK ==
     /\ torA \in ToR
     /\ torB \in ToR    
     /\ mux \in [ active: T, next: T ]
-    /\ heartbeatSender \in (T \union {"noResponse"})
 
 Init ==
     LET InitialTor(name) == 
@@ -76,19 +74,19 @@ Init ==
           name            |-> name,
           xcvrd           |-> IF name = mux.active THEN "Active" ELSE "Standby",
           heartbeat       |-> "on",
+          heartbeatIn     |-> {},
           linkManager     |-> "Checking",
           linkProber      |-> "Unknown",
           linkState       |-> "LinkDown",
           muxState        |-> "MuxWait" ]
     IN  /\ mux \in [ active: T, next: T ]
-        /\ heartbeatSender = "noResponse"
         /\ torA = InitialTor("torA")
         /\ torB = InitialTor("torB")
 
 \* XCVRD daemon described on page 11 of the Powerpoint presentation as of 08/25/2022
 
 XCVRD(t, otherTor) ==
-    /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
+    /\ UNCHANGED <<otherTor, mux>>
     /\ ~t.dead                                          \* TODO Model dead XCVDR daemon separately?
     /\ mux.active = mux.next
     \* /\ t.muxState = "LinkWait"
@@ -153,6 +151,7 @@ MuxStateStandby(t, otherTor) ==
 LinkState(t, otherTor) ==
     /\ ~t.dead
     /\ t.linkState = "LinkDown" \* unnecessary, because going from LinkUp to LinkUp is just (finite) stuttering.  However, this conjunct prevent the debugger from evaluating this action when it is stuttering.
+    /\ UNCHANGED <<otherTor, mux>>
     /\ t' = [t EXCEPT !.linkState = "LinkUp"]
 
 \* State machine page 14 of the Powerpoint presentation as of 08/25/2022
@@ -191,7 +190,7 @@ LinkManagerStandby(t, otherTor) ==
 
 LinkManagerPage14(t, otherTor) ==
     /\ ~t.dead
-    /\ UNCHANGED <<otherTor, mux, heartbeatSender>>
+    /\ UNCHANGED <<otherTor, mux>>
     /\ \/ LinkManagerChecking(t, otherTor)
        \/ LinkManagerActive(t, otherTor)
        \/ LinkManagerStandby(t, otherTor)
@@ -209,35 +208,39 @@ SendHeartbeat(t) ==
     (* to both ToR's                                                            *)
     (****************************************************************************)
     /\  mux.active = t.name  \* The MUX will drop traffic from ToR if it is not pointing to it
-    /\  heartbeatSender' = t.name
-    /\  UNCHANGED <<torA, torB, mux>>
+    /\ torA' = [ torA EXCEPT !.heartbeatIn = @ \cup {t.name} ]
+    /\ torB' = [ torB EXCEPT !.heartbeatIn = @ \cup {t.name} ]
+    /\ UNCHANGED <<mux>>
 
 LinkProberUnknown(t, otherTor) ==
     /\ t.linkProber = "Unknown"
-    /\ \/ /\ t.name = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Active"]
-       \/ /\ otherTor.name = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Standby"]
-       \/ /\ "noResponse" = heartbeatSender
-          /\ UNCHANGED t
+    /\ \E heartbeat \in t.heartbeatIn:
+        \/ /\ t.name = heartbeat
+           /\ t' = [t EXCEPT !.linkProber = "Active", !.heartbeatIn = @ \ {heartbeat}]
+        \/ /\ otherTor.name = heartbeat
+           /\ t' = [t EXCEPT !.linkProber = "Standby", !.heartbeatIn = @ \ {heartbeat}]
+        \/ /\ "noResponse" = heartbeat
+           /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
 
 LinkProberStandby(t, otherTor) ==
     /\ t.linkProber = "Standby"
-    /\ \/ /\ t.name = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Active"]
-       \/ /\ otherTor.name = heartbeatSender
-          /\ UNCHANGED t
-       \/ /\ "noResponse" = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Unknown"]
+    /\ \E heartbeat \in t.heartbeatIn:
+       \/ /\ t.name = heartbeat
+          /\ t' = [t EXCEPT !.linkProber = "Active", !.heartbeatIn = @ \ {heartbeat}]
+       \/ /\ otherTor.name = heartbeat
+          /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
+       \/ /\ "noResponse" = heartbeat
+          /\ t' = [t EXCEPT !.linkProber = "Unknown", !.heartbeatIn = @ \ {heartbeat}]
 
 LinkProberActive(t, otherTor) ==
     /\ t.linkProber = "Active"
-    /\ \/ /\ t.name = heartbeatSender
-          /\ UNCHANGED t
-       \/ /\ otherTor.name = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Standby"]
-       \/ /\ "noResponse" = heartbeatSender
-          /\ t' = [t EXCEPT !.linkProber = "Unknown"]
+    /\ \E heartbeat \in t.heartbeatIn:
+       \/ /\ t.name = heartbeat
+          /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
+       \/ /\ otherTor.name = heartbeat
+          /\ t' = [t EXCEPT !.linkProber = "Standby", !.heartbeatIn = @ \ {heartbeat}]
+       \/ /\ "noResponse" = heartbeat
+          /\ t' = [t EXCEPT !.linkProber = "Unknown", !.heartbeatIn = @ \ {heartbeat}]
 
 ReceiveHeartbeat(t, otherTor) ==
     /\ ~t.dead
@@ -245,13 +248,13 @@ ReceiveHeartbeat(t, otherTor) ==
     (****************************************************************************)
     (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
     (****************************************************************************)
-    /\  UNCHANGED <<otherTor, heartbeatSender, mux>>
+    /\  UNCHANGED <<otherTor, mux>>
     /\  \/  LinkProberUnknown(t, otherTor)
         \/  LinkProberStandby(t, otherTor)
         \/  LinkProberActive(t, otherTor)
 
 MuxXCVRD ==
-    /\ UNCHANGED <<torA, torB, heartbeatSender>>
+    /\ UNCHANGED <<torA, torB>>
     /\ mux.active # mux.next \* redundant
     /\ mux' = [ mux EXCEPT !.active = mux.next ]
 
@@ -284,22 +287,27 @@ FailHeartbeat ==
     (*****************************************************************************)
     (* Sender fails to send heartbeat to ToR's making them go into unknown state *)
     (*****************************************************************************)
-    /\  heartbeatSender' = "noResponse"
-    /\  UNCHANGED <<torA, torB, mux>>
+    /\ \/ /\ \E heartbeat \in SUBSET torA.heartbeatIn:
+                /\ torA' = [ torA EXCEPT !.heartbeatIn = heartbeat ]
+                /\ UNCHANGED torB
+       \/ /\ \E heartbeat \in SUBSET torB.heartbeatIn:
+                /\ torB' = [ torB EXCEPT !.heartbeatIn = heartbeat ]
+                /\ UNCHANGED torA
+    /\ UNCHANGED mux
 
 FailMux ==
     (******************************************************************)
     (* Failure Action for inconsistent MUX States with MuxCable State *)
     (******************************************************************)
     /\  mux' \in [ active: T, next: T ]
-    /\  UNCHANGED <<torA, torB, heartbeatSender>>
+    /\  UNCHANGED <<torA, torB>>
 
 FailTor(t, otherTor) ==
     /\ t' = [t EXCEPT !.dead = TRUE]
-    /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
+    /\ UNCHANGED <<otherTor, mux>>
 
 FailXCVRD(t, otherTor) ==
-    /\ UNCHANGED <<otherTor, heartbeatSender, mux>>
+    /\ UNCHANGED <<otherTor, mux>>
     \* According to Vaibhav Dahiya, the mux returns "Unknown" in case of failure, 
     \* which, subsequently, causes the ToR to go to "Standby".
     \* /\ t' = [t EXCEPT !.xcvrd = "Fail"]
@@ -307,7 +315,7 @@ FailXCVRD(t, otherTor) ==
 
 FailLinkState(t, otherTor) ==
     /\ ~t.dead
-    /\ UNCHANGED <<otherTor, mux, heartbeatSender>>
+    /\ UNCHANGED <<otherTor, mux>>
     /\ t' = [t EXCEPT !.linkState = "LinkDown"]
 
 Environment ==
@@ -342,7 +350,7 @@ THEOREM Spec => AtMostOneActive /\ RepeatedlyOneActive
 
 Alias ==
     [
-        torA |-> torA, torB |-> torB, mux |-> mux,  heartbeatSender |-> heartbeatSender,
+        torA |-> torA, torB |-> torB, mux |-> mux,
         active |-> { t.name : t \in { t \in {torA, torB} : t \in ActiveTor} }
     ]
 =============================================================================
