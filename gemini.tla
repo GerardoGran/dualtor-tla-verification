@@ -93,16 +93,16 @@ MuxStateActive(t, otherTor) ==
     /\ \/ /\ t.linkProber = "LPUnknown"
           \* TODO Where and when are heartbeats reactivated?
         \*   /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check", !.heartbeat = "off"]
-          /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check"]
+          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check"]
        \/ /\ t.linkProber = "LPStandby"
-          /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check"]
+          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check"]
 
 MuxStateStandby(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
     /\ ~t.dead
     /\ t.muxState = "MuxStandby"
     /\ \/ /\ t.linkProber = "LPActive"
-          /\ t.linkState = "LinkUp"
+          /\ t.linkState \in {"LinkUp", "LinkDown"} \* inconsistent with the table on slide 13. 
           /\ t' = [t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check"]
        \/ /\ t.linkProber = "LPUnknown"
           /\ t.linkState \in {"LinkUp", "LinkDown"}
@@ -114,15 +114,26 @@ MuxStateWait(t, otherTor) ==
     /\ t.muxState = "MuxWait"
     /\ t.linkProber \in {"LPActive", "LPStandby"}
     /\ t.linkState = "LinkUp"
-    /\ t' = [t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check"]
+    \* Timeout of a previous check or switch.
+    \* TODO Something inaccurate related to ORCAgent.
+    /\ t.xcvrd = "-"
+    /\ t' = [t EXCEPT !.muxState = "MuxStandby"]
+
+MuxStateUnknown(t, otherTor) ==
+    /\ UNCHANGED <<mux, otherTor>>
+    /\ ~t.dead
+    /\ t.muxState = "MuxUnknown"
+    /\ t.linkProber \in {"LPActive", "LPStandby"}
+    /\ t.linkState = "LinkUp"
+    /\ t' = [t EXCEPT !.xcvrd = "check"]
 
 XCVRDCheck(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
-    /\ \* Solicited mux notification
-       \/ t.muxState = "MuxWait"
-       \* Unsolicited mux notification
-       \/ t.muxState = "MuxUnknown"
-    /\ t.xcvrd = "check"
+    \* /\ \* Solicited mux notification
+    \*    \/ t.muxState = "MuxWait"
+    \*    \* Unsolicited mux notification
+    \*    \/ t.muxState = "MuxUnknown"
+    \* /\ t.xcvrd = "check"
     /\ \/ /\ mux.active = t.name
           /\ t' = [t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-"]
        \/ /\ mux.active # t.name
@@ -131,9 +142,17 @@ XCVRDCheck(t, otherTor) ==
 XCVRDSwitch(t, otherTor) ==
     /\ UNCHANGED <<otherTor>>
     /\ t.muxState = "MuxWait"
+    /\ t.linkProber = "LPWait"
     /\ t.xcvrd = "switch"
     /\ t' = [t EXCEPT !.xcvrd = "check"]
     /\ mux' = [ mux EXCEPT !.next = t.name]
+
+-----------------------------------------------------------------------------
+
+MuxXCVRD ==
+    /\ UNCHANGED <<torA, torB>>
+    /\ mux.active # mux.next \* redundant
+    /\ mux' = [ mux EXCEPT !.active = mux.next ]
 
 \* State machine page 10 of the Powerpoint presentation as of 08/25/2022
 
@@ -213,13 +232,6 @@ LinkProberActive(t, otherTor) ==
           /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
        \/ /\ "noResponse" = heartbeat
           /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
-
------------------------------------------------------------------------------
-
-MuxXCVRD ==
-    /\ UNCHANGED <<torA, torB>>
-    /\ mux.active # mux.next \* redundant
-    /\ mux' = [ mux EXCEPT !.active = mux.next ]
 
 -----------------------------------------------------------------------------
 
