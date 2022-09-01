@@ -27,13 +27,13 @@ vars == <<torA, torB, mux>>
 T == {"torA", "torB"}
 
 \* Link Prober (page 9)
-LPStates == {"Active", "Standby", "Wait", "Unknown"}
+LPStates == {"LPActive", "LPStandby", "LPWait", "LPUnknown"}
 
 \* Link Stat (page 10)
 LinkStates == {"LinkUp", "LinkDown"}
 
 \* Mux State (page 12)
-MuxStates == {"Active", "Standby", "Wait", "Unknown"}
+MuxStates == {"MuxActive", "MuxStandby", "MuxWait", "MuxUnknown"}
 
 \* MUX_XCVRD_ (page 11)
 XCVRDStates == {"switch", "check", "-"}
@@ -55,9 +55,9 @@ ActiveTor ==
       xcvrd: {"-"},
       heartbeat: {"on"},
       heartbeatIn: SUBSET (T \union {"noResponse"}),
-      linkProber: {"Active"}, 
+      linkProber: {"LPActive"}, 
       linkState: {"LinkUp"},
-      muxState: {"Active"} ]
+      muxState: {"MuxActive"} ]
 
 TypeOK == 
     /\ torA \in ToR
@@ -71,9 +71,9 @@ Init ==
           xcvrd           |-> "-",
           heartbeat       |-> "on",
           heartbeatIn     |-> {},
-          linkProber      |-> "Unknown",
+          linkProber      |-> "LPUnknown",
           linkState       |-> "LinkDown",
-          muxState        |-> "Wait" ]
+          muxState        |-> "MuxWait" ]
     IN  /\ mux \in {f \in [ active: T, next: T ]: f.active = f.next}
         /\ torA = InitialTor("torA")
         /\ torB = InitialTor("torB")
@@ -88,49 +88,49 @@ Init ==
 MuxStateActive(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
     /\ ~t.dead
-    /\ t.muxState = "Active"
+    /\ t.muxState = "MuxActive"
     /\ t.linkState \in {"LinkUp", "LinkDown"}
-    /\ \/ /\ t.linkProber = "Unknown"
+    /\ \/ /\ t.linkProber = "LPUnknown"
           \* TODO Where and when are heartbeats reactivated?
         \*   /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check", !.heartbeat = "off"]
           /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check"]
-       \/ /\ t.linkProber = "Standby"
+       \/ /\ t.linkProber = "LPStandby"
           /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check"]
 
 MuxStateStandby(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
     /\ ~t.dead
-    /\ t.muxState = "Standby"
-    /\ \/ /\ t.linkProber = "Active"
+    /\ t.muxState = "MuxStandby"
+    /\ \/ /\ t.linkProber = "LPActive"
           /\ t.linkState = "LinkUp"
-          /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check"]
-       \/ /\ t.linkProber = "Unknown"
+          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check"]
+       \/ /\ t.linkProber = "LPUnknown"
           /\ t.linkState \in {"LinkUp", "LinkDown"}
-          /\ t' = [t EXCEPT !.muxState = "Wait", !.linkProber = "Wait", !.xcvrd = "switch"]
+          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.linkProber = "LPWait", !.xcvrd = "switch"]
 
 MuxStateWait(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
     /\ ~t.dead
-    /\ t.muxState = "Wait"
-    /\ t.linkProber \in {"Active", "Standby"}
+    /\ t.muxState = "MuxWait"
+    /\ t.linkProber \in {"LPActive", "LPStandby"}
     /\ t.linkState = "LinkUp"
-    /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check"]
+    /\ t' = [t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check"]
 
 XCVRDCheck(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
     /\ \* Solicited mux notification
-       \/ t.muxState = "Wait"
+       \/ t.muxState = "MuxWait"
        \* Unsolicited mux notification
-       \/ t.muxState = "Unknown"
+       \/ t.muxState = "MuxUnknown"
     /\ t.xcvrd = "check"
     /\ \/ /\ mux.active = t.name
-          /\ t' = [t EXCEPT !.muxState = "Active", !.xcvrd = "-"]
+          /\ t' = [t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-"]
        \/ /\ mux.active # t.name
-          /\ t' = [t EXCEPT !.muxState = "Standby", !.xcvrd = "-"]
+          /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]
 
 XCVRDSwitch(t, otherTor) ==
     /\ UNCHANGED <<otherTor>>
-    /\ t.muxState = "Wait"
+    /\ t.muxState = "MuxWait"
     /\ t.xcvrd = "switch"
     /\ t' = [t EXCEPT !.xcvrd = "check"]
     /\ mux' = [ mux EXCEPT !.next = t.name]
@@ -165,12 +165,12 @@ LinkProberWait(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
     /\ ~t.dead
     /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "Wait"
+    /\ t.linkProber = "LPWait"
     /\ \E heartbeat \in t.heartbeatIn:
         \/ /\ t.name = heartbeat
-           /\ t' = [t EXCEPT !.linkProber = "Active", !.heartbeatIn = @ \ {heartbeat}]
+           /\ t' = [t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat}]
         \/ /\ otherTor.name = heartbeat
-           /\ t' = [t EXCEPT !.linkProber = "Standby", !.heartbeatIn = @ \ {heartbeat}]
+           /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
         \/ /\ "noResponse" = heartbeat
            /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
 
@@ -179,12 +179,12 @@ LinkProberUnknown(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
     /\ ~t.dead
     /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "Unknown"
+    /\ t.linkProber = "LPUnknown"
     /\ \E heartbeat \in t.heartbeatIn:
         \/ /\ t.name = heartbeat
-           /\ t' = [t EXCEPT !.linkProber = "Active", !.heartbeatIn = @ \ {heartbeat}]
+           /\ t' = [t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat}]
         \/ /\ otherTor.name = heartbeat
-           /\ t' = [t EXCEPT !.linkProber = "Standby", !.heartbeatIn = @ \ {heartbeat}]
+           /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
         \/ /\ "noResponse" = heartbeat
            /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
 
@@ -192,27 +192,27 @@ LinkProberStandby(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
     /\ ~t.dead
     /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "Standby"
+    /\ t.linkProber = "LPStandby"
     /\ \E heartbeat \in t.heartbeatIn:
        \/ /\ t.name = heartbeat
-          /\ t' = [t EXCEPT !.linkProber = "Active", !.heartbeatIn = @ \ {heartbeat}]
+          /\ t' = [t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat}]
        \/ /\ otherTor.name = heartbeat
           /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
        \/ /\ "noResponse" = heartbeat
-          /\ t' = [t EXCEPT !.linkProber = "Unknown", !.heartbeatIn = @ \ {heartbeat}]
+          /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
 
 LinkProberActive(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
     /\ ~t.dead
     /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "Active"
+    /\ t.linkProber = "LPActive"
     /\ \E heartbeat \in t.heartbeatIn:
        \/ /\ t.name = heartbeat
           /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
        \/ /\ otherTor.name = heartbeat
-          /\ t' = [t EXCEPT !.linkProber = "Standby", !.heartbeatIn = @ \ {heartbeat}]
+          /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
        \/ /\ "noResponse" = heartbeat
-          /\ t' = [t EXCEPT !.linkProber = "Unknown", !.heartbeatIn = @ \ {heartbeat}]
+          /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
 
 -----------------------------------------------------------------------------
 
