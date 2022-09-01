@@ -47,7 +47,7 @@ ToR ==
       linkProber: LPStates,
       linkState: LinkStates,
       muxState: MuxStates ]
-ash 
+
 \* "Goal" state for a ToR.
 ActiveTor == 
     [ dead: {FALSE},
@@ -85,47 +85,101 @@ Init ==
 
 \* Merged LinkWait and MuxWait on Powerpoint slide 13 into Wait
 
+(**************************************************************************************************)
+(* MuxState State Transitions depend on LinkManager's decisions and XCVRD responses when checking *)
+(* or switching the MuxCable's direction                                                          *)
+(**************************************************************************************************)
+
+LINKMANAGER_CHECK(t) ==
+    (**************************************************)
+    (* Sends check request to MUX via XCVRD.          *)
+    (* Transitions muxState to MuxWait.               *)
+    (* Defined to use in subsequent MuxState actions. *)
+    (**************************************************)
+    t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check" ]
+
+
+LINKMANAGER_SWITCH(t, target) ==
+    (************************************************************)
+    (* Sends write request to MUX via XCVRD.                    *)
+    (* Transitions muxState to MuxWait and linkProber to LPWait *)
+    (* target refers to ToR the Mux should point to.            *)
+    (* Defined to use in subsequent MuxState actions.           *)
+    (************************************************************)
+    /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait" ]
+    /\  mux' = [ mux EXCEPT !.next = target.name]
+
+----------------------------
+
 MuxStateActive(t, otherTor) ==
-    /\ UNCHANGED <<mux, otherTor>>
-    /\ ~t.dead
-    /\ t.muxState = "MuxActive"
-    /\ t.linkState \in {"LinkUp", "LinkDown"}
-    /\ \/ /\ t.linkProber = "LPUnknown"
-          \* TODO Where and when are heartbeats reactivated?
-        \*   /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check", !.heartbeat = "off"]
-          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check"]
-       \/ /\ t.linkProber = "LPStandby"
-          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check"]
+    /\  t.muxState = "MuxActive"
+    /\  \/  /\ t.linkState = "LinkUp"
+            \* LinkUp MuxStateActive Row
+            /\  \/  /\ t.linkProber \in {"LPStandby", "LPUnknown"}
+                    /\ LINKMANAGER_CHECK(t)
+                \/  /\ t.linkProber = "LPWait"
+                    \* Check and suspend heartbeat
+                    /\ t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check", !.heartbeat = "off" ]
+            /\ UNCHANGED <<mux, otherTor>>
+        \/  /\ t.linkState = "LinkDown"
+            \* Switch to Standby
+            /\ LINKMANAGER_SWITCH(t, otherTor)
+            /\ UNCHANGED otherTor
 
 MuxStateStandby(t, otherTor) ==
-    /\ UNCHANGED <<mux, otherTor>>
-    /\ ~t.dead
-    /\ t.muxState = "MuxStandby"
-    /\ \/ /\ t.linkProber = "LPActive"
-          /\ t.linkState \in {"LinkUp", "LinkDown"} \* inconsistent with the table on slide 13. 
-          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check"]
-       \/ /\ t.linkProber = "LPUnknown"
-          /\ t.linkState \in {"LinkUp", "LinkDown"}
-          /\ t' = [t EXCEPT !.muxState = "MuxWait", !.linkProber = "LPWait", !.xcvrd = "switch"]
-
-MuxStateWait(t, otherTor) ==
-    /\ UNCHANGED <<mux, otherTor>>
-    /\ ~t.dead
-    /\ t.muxState = "MuxWait"
-    /\ t.linkProber \in {"LPActive", "LPStandby"}
-    /\ t.linkState = "LinkUp"
-    \* Timeout of a previous check or switch.
-    \* TODO Something inaccurate related to ORCAgent.
-    /\ t.xcvrd = "-"
-    /\ t' = [t EXCEPT !.muxState = "MuxStandby"]
+    /\  t.muxState = "MuxStandby"
+    /\  \/  /\ t.linkState = "LinkUp"
+        \* LinkUp MuxStateStandby Row
+            /\  \/  /\ t.linkProber \in {"LPActive", "LPWait"}
+                    /\ LINKMANAGER_CHECK(t)
+                    /\ UNCHANGED <<mux, otherTor>>
+                \/  /\ t.linkProber = "LPUnknown"
+                    \* Switch to Active
+                    /\ LINKMANAGER_SWITCH(t, t)
+                    /\ UNCHANGED otherTor
+        \/  /\ t.linkState = "LinkDown"
+        \* LinkDown MuxStateStandby Row
+            /\ t.linkProber \in {"LPUnknown, LPWait"}
+            /\ LINKMANAGER_CHECK(t)
+            /\ UNCHANGED <<mux, otherTor>>
 
 MuxStateUnknown(t, otherTor) ==
+    /\  t.muxState = "MuxUnknown"
+    /\  \/  /\ t.linkState = "LinkUp"
+            \* LinkUp MuxStateStandby Row
+            /\ LINKMANAGER_CHECK(t)
+        \/  /\ t.linkState = "LinkDown"
+        \* LinkDown MuxStateStandby Row
+            /\ t.linkProber \in {"LPUnknown, LPWait"}
+            /\ LINKMANAGER_CHECK(t)
+    /\  UNCHANGED <<mux, otherTor>>
+
     /\ UNCHANGED <<mux, otherTor>>
     /\ ~t.dead
     /\ t.muxState = "MuxUnknown"
     /\ t.linkProber \in {"LPActive", "LPStandby"}
     /\ t.linkState = "LinkUp"
     /\ t' = [t EXCEPT !.xcvrd = "check"]
+
+MuxStateWait(t, otherTor) ==
+    \*TODO Specify receiving XCVRD Response
+
+    /\ UNCHANGED <<mux, otherTor>>
+    /\ ~t.dead
+    /\ t.muxState = "MuxWait"
+    /\ t.linkProber \in {"LPActive", "LPStandby"}
+    /\ t.linkState = "LinkUp"
+    \* Timeout of a previous check or switch.
+    \* TODO Something inaccurate related to orchAgent.
+    /\ t.xcvrd = "-"
+    /\ t' = [t EXCEPT !.muxState = "MuxStandby"]
+
+MuxState(t, otherTor) ==
+    /\ ~t.dead
+    /\  \/  MuxStateActive(t, otherTor)
+        \/  MuxStateStandby(t, otherTor)
+        \/  MuxStateUnknown(t, otherTor)
+        \/  MuxStateWait(t, otherTor)
 
 XCVRDCheck(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
@@ -140,18 +194,18 @@ XCVRDCheck(t, otherTor) ==
           /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]
 
 XCVRDSwitch(t, otherTor) ==
-    /\ UNCHANGED <<otherTor>>
+    \* Writing Switch direction
+    /\ UNCHANGED <<torA, torB>>
     /\ t.muxState = "MuxWait"
     /\ t.linkProber = "LPWait"
     /\ t.xcvrd = "switch"
-    /\ t' = [t EXCEPT !.xcvrd = "check"]
     /\ mux' = [ mux EXCEPT !.next = t.name]
 
 -----------------------------------------------------------------------------
 
 MuxXCVRD ==
+    \* 
     /\ UNCHANGED <<torA, torB>>
-    /\ mux.active # mux.next \* redundant
     /\ mux' = [ mux EXCEPT !.active = mux.next ]
 
 \* State machine page 10 of the Powerpoint presentation as of 08/25/2022
