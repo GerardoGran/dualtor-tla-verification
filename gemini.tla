@@ -26,9 +26,6 @@ vars == <<torA, torB, mux>>
 
 T == {"torA", "torB"}
 
-\* Link Manager (page 14)
-LMStates == {"Checking", "Active", "Standby"} \union {"Failure"}
-
 \* Link Prober (page 9)
 LPStates == {"Active", "Standby", "Unknown"}
 
