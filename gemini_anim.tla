@@ -123,3 +123,7 @@ AnimAlias == Alias @@ [
     ]
 
 ====
+
+
+
+convert -delay 100 -density 200 *.svg gemini.pdf
