@@ -158,6 +158,9 @@ SendHeartbeat(t) ==
     /\ UNCHANGED <<mux>>
 
 LinkProberWait(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, mux>>
+    /\ ~t.dead
+    /\ t.linkState = "LinkUp"
     /\ t.linkProber = "Wait"
     /\ \E heartbeat \in t.heartbeatIn:
         \/ /\ t.name = heartbeat
@@ -169,6 +172,9 @@ LinkProberWait(t, otherTor) ==
 
 
 LinkProberUnknown(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, mux>>
+    /\ ~t.dead
+    /\ t.linkState = "LinkUp"
     /\ t.linkProber = "Unknown"
     /\ \E heartbeat \in t.heartbeatIn:
         \/ /\ t.name = heartbeat
@@ -179,6 +185,9 @@ LinkProberUnknown(t, otherTor) ==
            /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
 
 LinkProberStandby(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, mux>>
+    /\ ~t.dead
+    /\ t.linkState = "LinkUp"
     /\ t.linkProber = "Standby"
     /\ \E heartbeat \in t.heartbeatIn:
        \/ /\ t.name = heartbeat
@@ -189,6 +198,9 @@ LinkProberStandby(t, otherTor) ==
           /\ t' = [t EXCEPT !.linkProber = "Unknown", !.heartbeatIn = @ \ {heartbeat}]
 
 LinkProberActive(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, mux>>
+    /\ ~t.dead
+    /\ t.linkState = "LinkUp"
     /\ t.linkProber = "Active"
     /\ \E heartbeat \in t.heartbeatIn:
        \/ /\ t.name = heartbeat
@@ -198,17 +210,7 @@ LinkProberActive(t, otherTor) ==
        \/ /\ "noResponse" = heartbeat
           /\ t' = [t EXCEPT !.linkProber = "Unknown", !.heartbeatIn = @ \ {heartbeat}]
 
-ReceiveHeartbeat(t, otherTor) ==
-    /\ ~t.dead
-    /\ t.linkState = "LinkUp"
-    (****************************************************************************)
-    (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
-    (****************************************************************************)
-    /\  UNCHANGED <<otherTor, mux>>
-    /\  \/  LinkProberUnknown(t, otherTor)
-        \/  LinkProberStandby(t, otherTor)
-        \/  LinkProberActive(t, otherTor)
-        \/  LinkProberWait(t, otherTor)
+-----------------------------------------------------------------------------
 
 MuxXCVRD ==
     /\ UNCHANGED <<torA, torB>>
@@ -218,23 +220,44 @@ MuxXCVRD ==
 -----------------------------------------------------------------------------
 
 System ==
+    (****************************************************************************)
+    (* Mux handling a switch command.                                           *)
+    (****************************************************************************)
     \/ MuxXCVRD
+    (****************************************************************************)
+    (* XCVRD and LinkMgrd                                                       *)
+    (****************************************************************************)
+    \/ XCVRDCheck(torA, torB)
+    \/ XCVRDCheck(torB, torA)
+    \/ XCVRDSwitch(torA, torB)
+    \/ XCVRDSwitch(torB, torA)
     \/ MuxStateStandby(torA, torB)
     \/ MuxStateStandby(torB, torA)
     \/ MuxStateActive(torA, torB)
     \/ MuxStateActive(torB, torA)
     \/ MuxStateWait(torA, torB)
     \/ MuxStateWait(torB, torA)
+    (****************************************************************************)
+    (* ToR periodically send heartbeats via the mux to the server.              *)
+    (****************************************************************************)
     \/ SendHeartbeat(torA)
     \/ SendHeartbeat(torB)
-    \/ ReceiveHeartbeat(torA, torB)
-    \/ ReceiveHeartbeat(torB, torA)
+    (****************************************************************************)
+    (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
+    (****************************************************************************)
+    \/ LinkProberStandby(torA, torB)
+    \/ LinkProberStandby(torB, torA)
+    \/ LinkProberActive(torA, torB)
+    \/ LinkProberActive(torB, torA)
+    \/ LinkProberUnknown(torA, torB)
+    \/ LinkProberUnknown(torB, torA)
+    \/ LinkProberWait(torA, torB)
+    \/ LinkProberWait(torB, torA)
+    (****************************************************************************)
+    (* Notification from the kernel that a physical link (L1) came up.          *)
+    (****************************************************************************)
     \/ LinkState(torA, torB)
     \/ LinkState(torB, torA)
-    \/ XCVRDCheck(torA, torB)
-    \/ XCVRDCheck(torB, torA)
-    \/ XCVRDSwitch(torA, torB)
-    \/ XCVRDSwitch(torB, torA)
 
 -----------------------------------------------------------------------------
 
@@ -285,7 +308,7 @@ Environment ==
 -----------------------------------------------------------------------------
 
 Next == 
-    \* \/ Environment
+    \/ Environment
     \/ System
 
 Spec ==
