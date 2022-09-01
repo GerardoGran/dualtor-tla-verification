@@ -224,12 +224,12 @@ MuxXCVRD ==
 System ==
     \/ MuxXCVRD
     \/ MuxStateStandby(torA, torB)
-    \/ MuxStateActive(torA, torB)
-    \/ MuxStateMuxWait(torA, torB)
-    \/ MuxStateLinkWait(torA, torB)    
     \/ MuxStateStandby(torB, torA)
+    \/ MuxStateActive(torA, torB)
     \/ MuxStateActive(torB, torA)
+    \/ MuxStateMuxWait(torA, torB)
     \/ MuxStateMuxWait(torB, torA)
+    \/ MuxStateLinkWait(torA, torB)    
     \/ MuxStateLinkWait(torB, torA)    
     \/ SendHeartbeat(torA)
     \/ SendHeartbeat(torB)
