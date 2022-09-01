@@ -89,9 +89,13 @@ MuxStateActive(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
     /\ ~t.dead
     /\ t.muxState = "Active"
-    /\ t.linkProber \in {"Unknown", "Standby"}
     /\ t.linkState \in {"LinkUp", "LinkDown"}
-    /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check"]
+    /\ \/ /\ t.linkProber = "Unknown"
+          \* TODO Where and when are heartbeats reactivated?
+        \*   /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check", !.heartbeat = "off"]
+          /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check"]
+       \/ /\ t.linkProber = "Standby"
+          /\ t' = [t EXCEPT !.muxState = "Wait", !.xcvrd = "check"]
 
 MuxStateStandby(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
