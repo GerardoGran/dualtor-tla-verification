@@ -90,7 +90,7 @@ Init ==
 (* or switching the MuxCable's direction                                                          *)
 (**************************************************************************************************)
 
-LINKMANAGER_CHECK(t) ==
+TRIGGER_LINKMANAGER_CHECK(t) ==
     (**************************************************)
     (* Sends check request to MUX via XCVRD.          *)
     (* Transitions muxState to MuxWait.               *)
@@ -99,7 +99,7 @@ LINKMANAGER_CHECK(t) ==
     t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check" ]
 
 
-LINKMANAGER_SWITCH(t, target) ==
+TRIGGER_LINKMANAGER_SWITCH(t, target) ==
     (************************************************************)
     (* Sends write request to MUX via XCVRD.                    *)
     (* Transitions muxState to MuxWait and linkProber to LPWait *)
@@ -154,25 +154,11 @@ MuxStateUnknown(t, otherTor) ==
             /\ LINKMANAGER_CHECK(t)
     /\  UNCHANGED <<mux, otherTor>>
 
-    /\ UNCHANGED <<mux, otherTor>>
-    /\ ~t.dead
-    /\ t.muxState = "MuxUnknown"
-    /\ t.linkProber \in {"LPActive", "LPStandby"}
-    /\ t.linkState = "LinkUp"
-    /\ t' = [t EXCEPT !.xcvrd = "check"]
-
 MuxStateWait(t, otherTor) ==
     \*TODO Specify receiving XCVRD Response
-
-    /\ UNCHANGED <<mux, otherTor>>
-    /\ ~t.dead
     /\ t.muxState = "MuxWait"
-    /\ t.linkProber \in {"LPActive", "LPStandby"}
-    /\ t.linkState = "LinkUp"
-    \* Timeout of a previous check or switch.
-    \* TODO Something inaccurate related to orchAgent.
-    /\ t.xcvrd = "-"
-    /\ t' = [t EXCEPT !.muxState = "MuxStandby"]
+    /\  \/  /\ EXEC_LINKMANAGER_CHECK(t, otherTor)
+        \/  /\ EXEC_LINKMANAGER_SWITCH(t, otherTor)
 
 MuxState(t, otherTor) ==
     /\ ~t.dead
@@ -181,25 +167,36 @@ MuxState(t, otherTor) ==
         \/  MuxStateUnknown(t, otherTor)
         \/  MuxStateWait(t, otherTor)
 
-XCVRDCheck(t, otherTor) ==
+EXEC_LINKMANAGER_CHECK(t, otherTor) ==
     /\ UNCHANGED <<mux, otherTor>>
     \* /\ \* Solicited mux notification
     \*    \/ t.muxState = "MuxWait"
     \*    \* Unsolicited mux notification
     \*    \/ t.muxState = "MuxUnknown"
-    \* /\ t.xcvrd = "check"
-    /\ \/ /\ mux.active = t.name
-          /\ t' = [t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-"]
-       \/ /\ mux.active # t.name
-          /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]
+    /\ t.xcvrd = "check"
+    /\  \/  /\ mux.active = t.name
+            /\ t' = [t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-"]
+        \/  /\ mux.active # t.name
+            /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]
+        \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown", !.xcvrd = "-"]
+        \* \/  /\ t.muxState = "MuxWait"
+        \*     /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]  MUX_XCVRD_FAIL
+        
 
-XCVRDSwitch(t, otherTor) ==
+EXEC_LINKMANAGER_SWITCH(t, otherTor) ==
     \* Writing Switch direction
     /\ UNCHANGED <<torA, torB>>
+    /\ t.xcvrd = "switch"
     /\ t.muxState = "MuxWait"
     /\ t.linkProber = "LPWait"
-    /\ t.xcvrd = "switch"
-    /\ mux' = [ mux EXCEPT !.next = t.name]
+    /\ mux' = [ mux EXCEPT !.active = t.next]
+    /\  \/  /\ mux.next = t.name
+            /\ t' = [t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-"]
+        \/  /\ mux.next # t.name
+            /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]
+        \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown", !.xcvrd = "-"]
+        \* \/  /\ t.muxState = "MuxWait"
+        \*     /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]  MUX_XCVRD_FAIL
 
 -----------------------------------------------------------------------------
 
