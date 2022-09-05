@@ -365,8 +365,11 @@ Environment ==
 
 -----------------------------------------------------------------------------
 
+WithoutFailureSpec ==
+    Init /\ [][System]_vars /\ WF_vars(System)
+
 Next == 
-    \* \/ Environment
+    \/ Environment
     \/ System
 
 Spec ==
