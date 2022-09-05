@@ -365,15 +365,18 @@ Environment ==
 
 -----------------------------------------------------------------------------
 
+Fairness ==
+    /\ WF_vars(System)
+
 WithoutFailureSpec ==
-    Init /\ [][System]_vars /\ WF_vars(System)
+    Init /\ [][System]_vars /\ Fairness
 
 Next == 
     \/ Environment
     \/ System
 
 Spec ==
-    Init /\ [][Next]_vars /\ WF_vars(System)
+    Init /\ [][Next]_vars /\ Fairness
 
 -----------------------------------------------------------------------------
 
