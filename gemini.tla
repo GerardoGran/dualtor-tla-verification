@@ -139,6 +139,7 @@ EXEC_LINKMANAGER_SWITCH(t, otherTor) ==
 ----------------------------
 
 MuxStateActive(t, otherTor) ==
+    /\ ~t.dead
     /\  t.muxState = "MuxActive"
     /\  \/  /\ t.linkState = "LinkUp"
             \* LinkUp MuxStateActive Row
@@ -154,6 +155,7 @@ MuxStateActive(t, otherTor) ==
             /\ UNCHANGED otherTor
 
 MuxStateStandby(t, otherTor) ==
+    /\ ~t.dead
     /\  t.muxState = "MuxStandby"
     /\  \/  /\ t.linkState = "LinkUp"
         \* LinkUp MuxStateStandby Row
@@ -171,6 +173,7 @@ MuxStateStandby(t, otherTor) ==
             /\ UNCHANGED <<mux, otherTor>>
 
 MuxStateUnknown(t, otherTor) ==
+    /\ ~t.dead
     /\  t.muxState = "MuxUnknown"
     /\  \/  /\ t.linkState = "LinkUp"
             \* LinkUp MuxStateStandby Row
@@ -183,18 +186,10 @@ MuxStateUnknown(t, otherTor) ==
 
 MuxStateWait(t, otherTor) ==
     \*TODO Specify receiving XCVRD Response
+    /\ ~t.dead
     /\ t.muxState = "MuxWait"
     /\  \/  /\ EXEC_LINKMANAGER_CHECK(t, otherTor)
         \/  /\ EXEC_LINKMANAGER_SWITCH(t, otherTor)
-
-MuxState(t, otherTor) ==
-    /\ ~t.dead
-    /\  \/  MuxStateActive(t, otherTor)
-        \/  MuxStateStandby(t, otherTor)
-        \/  MuxStateUnknown(t, otherTor)
-        \/  MuxStateWait(t, otherTor)
-
-
 
 -----------------------------------------------------------------------------
 
@@ -298,8 +293,14 @@ System ==
     (****************************************************************************)
     (* XCVRD and LinkMgrd                                                       *)
     (****************************************************************************)
-    \/ MuxState(torA, torB)
-    \/ MuxState(torB, torA)
+    \/ MuxStateActive(torA, torB)
+    \/ MuxStateActive(torB, torA)
+    \/ MuxStateStandby(torA, torB)
+    \/ MuxStateStandby(torB, torA)
+    \/ MuxStateWait(torA, torB)
+    \/ MuxStateWait(torB, torA)
+    \/ MuxStateUnknown(torA, torB)
+    \/ MuxStateUnknown(torB, torA)
     (****************************************************************************)
     (* ToR periodically send heartbeats via the mux to the server.              *)
     (****************************************************************************)
