@@ -62,6 +62,9 @@ ActiveTor ==
 ActiveToRs ==
     { t \in {torA, torB} : t \in ActiveTor }
 
+AliveToRs ==
+    { t \in {torA, torB} : t.alive }
+
 TypeOK == 
     /\ torA \in ToR
     /\ torB \in ToR    
@@ -389,7 +392,8 @@ NotForeverBothActive ==
     ~(<>[](torA \in ActiveTor /\ torB \in ActiveTor))
 
 RepeatedlyOneActive ==
-    []<>(\E t \in {torA, torB} : t.alive => (torA \in ActiveTor \/ torB \in ActiveTor))
+    \* One or more alive tors imply that there repeatedly exists an active tor.
+    []<>(AliveToRs # {} => \E t \in AliveToRs: t \in ActiveTor)
 
 THEOREM Spec => 
     /\ NotForeverBothActive
