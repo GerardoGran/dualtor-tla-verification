@@ -380,14 +380,16 @@ Spec ==
 
 -----------------------------------------------------------------------------
 
-\* AtMostOneActive ==
-\*     []~(torA \in ActiveTor /\ torB \in ActiveTor)
+NotForeverBothActive ==
+    \* Both tors are never active indefinitely. In other words, there is no behavior
+    \* such that both tors are indefinitely active from some point onward.
+    ~(<>[](torA \in ActiveTor /\ torB \in ActiveTor))
 
 RepeatedlyOneActive ==
     []<>(\E t \in {torA, torB} : ~t.dead => (torA \in ActiveTor \/ torB \in ActiveTor))
 
 THEOREM Spec => 
-    \*/\ AtMostOneActive
+    /\ NotForeverBothActive
     /\ RepeatedlyOneActive
 
 -----------------------------------------------------------------------------
