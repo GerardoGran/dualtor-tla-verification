@@ -232,6 +232,7 @@ SendHeartbeat(t) ==
 
 LinkProberWait(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
+    /\ t.alive
     /\ t.linkState = "LinkUp"
     /\ t.linkProber = "LPWait"
     /\ \E heartbeat \in t.heartbeatIn:
@@ -245,6 +246,7 @@ LinkProberWait(t, otherTor) ==
 
 LinkProberUnknown(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
+    /\ t.alive
     /\ t.linkState = "LinkUp"
     /\ t.linkProber = "LPUnknown"
     /\ \E heartbeat \in t.heartbeatIn:
@@ -257,6 +259,7 @@ LinkProberUnknown(t, otherTor) ==
 
 LinkProberStandby(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
+    /\ t.alive
     /\ t.linkState = "LinkUp"
     /\ t.linkProber = "LPStandby"
     /\ \E heartbeat \in t.heartbeatIn:
@@ -269,6 +272,7 @@ LinkProberStandby(t, otherTor) ==
 
 LinkProberActive(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
+    /\ t.alive
     /\ t.linkState = "LinkUp"
     /\ t.linkProber = "LPActive"
     /\ \E heartbeat \in t.heartbeatIn:
@@ -278,13 +282,6 @@ LinkProberActive(t, otherTor) ==
           /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
        \/ /\ "noResponse" = heartbeat
           /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
-
-LinkProber(t, otherTor) ==
-    /\ t.alive
-    /\  \/ LinkProberActive(t, otherTor)
-        \/ LinkProberStandby(t, otherTor)
-        \/ LinkProberWait(t, otherTor)
-        \/ LinkProberUnknown(t, otherTor)
 
 -----------------------------------------------------------------------------
 
@@ -315,8 +312,14 @@ System ==
     (****************************************************************************)
     (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
     (****************************************************************************)
-    \/ LinkProber(torA, torB)
-    \/ LinkProber(torB, torA)
+    \/ LinkProberActive(torA, torB)
+    \/ LinkProberActive(torB, torA)
+    \/ LinkProberWait(torA, torB)
+    \/ LinkProberWait(torB, torA)
+    \/ LinkProberStandby(torA, torB)
+    \/ LinkProberStandby(torB, torA)
+    \/ LinkProberUnknown(torA, torB)
+    \/ LinkProberUnknown(torB, torA)
     (****************************************************************************)
     (* Notification from the kernel that a physical link (L1) came up.          *)
     (****************************************************************************)
