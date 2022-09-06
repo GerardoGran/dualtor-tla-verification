@@ -39,7 +39,7 @@ MuxStates == {"MuxActive", "MuxStandby", "MuxWait", "MuxUnknown"}
 XCVRDStates == {"switch", "check", "-"}
 
 ToR ==
-    [ dead: BOOLEAN, 
+    [ alive: BOOLEAN, 
       name: T,
       xcvrd: XCVRDStates,
       heartbeat: {"on", "off"},
@@ -50,7 +50,7 @@ ToR ==
 
 \* "Goal" state for a ToR.
 ActiveTor == 
-    [ dead: {FALSE},
+    [ alive: {TRUE},
       name: T, 
       xcvrd: {"-"},
       heartbeat: {"on"},
@@ -66,7 +66,7 @@ TypeOK ==
 
 Init ==
     LET InitialTor(name) == 
-        [ dead            |-> FALSE,
+        [ alive           |-> TRUE,
           name            |-> name,
           xcvrd           |-> "check",
           heartbeat       |-> "on",
@@ -139,7 +139,7 @@ EXEC_LINKMANAGER_SWITCH(t, otherTor) ==
 ----------------------------
 
 MuxStateActive(t, otherTor) ==
-    /\ ~t.dead
+    /\ t.alive
     /\  t.muxState = "MuxActive"
     /\  \/  /\ t.linkState = "LinkUp"
             \* LinkUp MuxStateActive Row
@@ -155,7 +155,7 @@ MuxStateActive(t, otherTor) ==
             /\ UNCHANGED otherTor
 
 MuxStateStandby(t, otherTor) ==
-    /\ ~t.dead
+    /\ t.alive
     /\  t.muxState = "MuxStandby"
     /\  \/  /\ t.linkState = "LinkUp"
         \* LinkUp MuxStateStandby Row
@@ -173,7 +173,7 @@ MuxStateStandby(t, otherTor) ==
             /\ UNCHANGED <<mux, otherTor>>
 
 MuxStateUnknown(t, otherTor) ==
-    /\ ~t.dead
+    /\ t.alive
     /\  t.muxState = "MuxUnknown"
     /\  \/  /\ t.linkState = "LinkUp"
             \* LinkUp MuxStateStandby Row
@@ -186,7 +186,7 @@ MuxStateUnknown(t, otherTor) ==
 
 MuxStateWait(t, otherTor) ==
     \*TODO Specify receiving XCVRD Response
-    /\ ~t.dead
+    /\ t.alive
     /\ t.muxState = "MuxWait"
     /\  \/  /\ EXEC_LINKMANAGER_CHECK(t, otherTor)
         \/  /\ EXEC_LINKMANAGER_SWITCH(t, otherTor)
@@ -201,7 +201,7 @@ MuxStateWait(t, otherTor) ==
 \* State machine page 10 of the Powerpoint presentation as of 08/25/2022
 
 LinkState(t, otherTor) ==
-    /\ ~t.dead
+    /\ t.alive
     /\ t.linkState = "LinkDown" \* unnecessary, because going from LinkUp to LinkUp is just (finite) stuttering.  However, this conjunct prevent the debugger from evaluating this action when it is stuttering.
     /\ UNCHANGED <<otherTor, mux>>
     /\ t' = [t EXCEPT !.linkState = "LinkUp"]
@@ -212,7 +212,7 @@ LinkState(t, otherTor) ==
 \* https://microsoft-my.sharepoint.com/:u:/p/zhangjing/EclAzBSCq_5KuwgbbpyUlMQB1RS_X9nibOrM1PjT8wM_uw?e=eBtJKl
 
 SendHeartbeat(t) ==
-    /\ ~t.dead
+    /\ t.alive
     /\ t.linkState = "LinkUp"
     /\ t.heartbeat = "on"
     (****************************************************************************)
@@ -274,7 +274,7 @@ LinkProberActive(t, otherTor) ==
           /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
 
 LinkProber(t, otherTor) ==
-    /\ ~t.dead
+    /\ t.alive
     /\  \/ LinkProberActive(t, otherTor)
         \/ LinkProberStandby(t, otherTor)
         \/ LinkProberWait(t, otherTor)
@@ -339,7 +339,7 @@ FailMux ==
     /\  UNCHANGED <<torA, torB>>
 
 FailTor(t, otherTor) ==
-    /\ t' = [t EXCEPT !.dead = TRUE]
+    /\ t' = [t EXCEPT !.alive = FALSE]
     /\ UNCHANGED <<otherTor, mux>>
 
 FailXCVRD(t, otherTor) ==
@@ -349,7 +349,7 @@ FailXCVRD(t, otherTor) ==
     /\ t' = [t EXCEPT !.xcvrd = "-"]
 
 FailLinkState(t, otherTor) ==
-    /\ ~t.dead
+    /\ t.alive
     /\ UNCHANGED <<otherTor, mux>>
     /\ t' = [t EXCEPT !.linkState = "LinkDown"]
 
@@ -386,7 +386,7 @@ NotForeverBothActive ==
     ~(<>[](torA \in ActiveTor /\ torB \in ActiveTor))
 
 RepeatedlyOneActive ==
-    []<>(\E t \in {torA, torB} : ~t.dead => (torA \in ActiveTor \/ torB \in ActiveTor))
+    []<>(\E t \in {torA, torB} : t.alive => (torA \in ActiveTor \/ torB \in ActiveTor))
 
 THEOREM Spec => 
     /\ NotForeverBothActive
