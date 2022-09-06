@@ -58,6 +58,9 @@ ActiveTor ==
       linkProber: {"LPActive"}, 
       linkState: {"LinkUp"},
       muxState: {"MuxActive"} ]
+          
+ActiveToRs ==
+    { t \in {torA, torB} : t \in ActiveTor }
 
 TypeOK == 
     /\ torA \in ToR
@@ -397,7 +400,7 @@ THEOREM Spec =>
 Alias ==
     [
         torA |-> torA, torB |-> torB, mux |-> mux,
-        active |-> { t.name : t \in { t \in {torA, torB} : t \in ActiveTor} },
+        active |-> { t.name : t \in ActiveToRs },
         MSWA |-> ENABLED MuxStateWait(torA, torB),
         MSWB |-> ENABLED MuxStateWait(torB, torA)
     ]
