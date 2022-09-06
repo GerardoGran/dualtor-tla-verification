@@ -356,7 +356,6 @@ FailXCVRD(t, otherTor) ==
 
 FailLinkState(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
-    /\ t.alive
     /\ t' = [t EXCEPT !.linkState = "LinkDown"]
 
 Environment ==
