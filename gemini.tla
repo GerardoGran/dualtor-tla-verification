@@ -207,9 +207,9 @@ MuxStateWait(t, otherTor) ==
 \* State machine page 10 of the Powerpoint presentation as of 08/25/2022
 
 LinkState(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, mux>>
     /\ t.alive
     /\ t.linkState = "LinkDown" \* unnecessary, because going from LinkUp to LinkUp is just (finite) stuttering.  However, this conjunct prevent the debugger from evaluating this action when it is stuttering.
-    /\ UNCHANGED <<otherTor, mux>>
     /\ t' = [t EXCEPT !.linkState = "LinkUp"]
 
 -----------------------------------------------------------------------------
@@ -218,6 +218,7 @@ LinkState(t, otherTor) ==
 \* https://microsoft-my.sharepoint.com/:u:/p/zhangjing/EclAzBSCq_5KuwgbbpyUlMQB1RS_X9nibOrM1PjT8wM_uw?e=eBtJKl
 
 SendHeartbeat(t) ==
+    /\ UNCHANGED <<mux>>
     /\ t.alive
     /\ t.linkState = "LinkUp"
     /\ t.heartbeat = "on"
@@ -228,7 +229,6 @@ SendHeartbeat(t) ==
     /\  mux.active = t.name  \* The MUX will drop traffic from ToR if it is not pointing to it
     /\ torA' = [ torA EXCEPT !.heartbeatIn = @ \cup {t.name} ]
     /\ torB' = [ torB EXCEPT !.heartbeatIn = @ \cup {t.name} ]
-    /\ UNCHANGED <<mux>>
 
 LinkProberWait(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
@@ -329,24 +329,24 @@ FailHeartbeat ==
     (*****************************************************************************)
     (* Sender fails to send heartbeat to ToR's making them go into unknown state *)
     (*****************************************************************************)
+    /\ UNCHANGED mux
     /\ \/ /\ \E heartbeat \in SUBSET torA.heartbeatIn:
                 /\ torA' = [ torA EXCEPT !.heartbeatIn = heartbeat ]
                 /\ UNCHANGED torB
        \/ /\ \E heartbeat \in SUBSET torB.heartbeatIn:
                 /\ torB' = [ torB EXCEPT !.heartbeatIn = heartbeat ]
                 /\ UNCHANGED torA
-    /\ UNCHANGED mux
 
 FailMux ==
     (******************************************************************)
     (* Failure Action for inconsistent MUX States with MuxCable State *)
     (******************************************************************)
-    /\  mux' \in [ active: T, next: T ]
     /\  UNCHANGED <<torA, torB>>
+    /\  mux' \in [ active: T, next: T ]
 
 FailTor(t, otherTor) ==
-    /\ t' = [t EXCEPT !.alive = FALSE]
     /\ UNCHANGED <<otherTor, mux>>
+    /\ t' = [t EXCEPT !.alive = FALSE]
 
 FailXCVRD(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
@@ -355,8 +355,8 @@ FailXCVRD(t, otherTor) ==
     /\ t' = [t EXCEPT !.xcvrd = "-"]
 
 FailLinkState(t, otherTor) ==
-    /\ t.alive
     /\ UNCHANGED <<otherTor, mux>>
+    /\ t.alive
     /\ t' = [t EXCEPT !.linkState = "LinkDown"]
 
 Environment ==
