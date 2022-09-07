@@ -4,7 +4,7 @@ This is the repository for the TLA+ Specification for the Gemini Protocol in use
 
 # The Gemini Protocol
 The Gemini Protocol implements a dual-ToR solution on a given rack, ensuring reliability in case one presents a failure. In it one ToR is designated as "Active" and the other must be "Standby". The Active ToR will operate normally, forwarding southbound and northbound traffic. The Standby ToR will tunnel all southbound traffic to the Active ToR and drop all northbound traffic (except for ICMP packets it requires for the [LinkProber Module](#linkprober-module)).
-Both ToRs are connected to the server with a Y-split MUX cable that listens in one direction. This MUX cable splits all northbound traffic to both ToRs.
+Both ToRs are connected to the server with a Y-split MUX cable. The MUX cable can only accept the southbound (T0 to server) traffic from one direction and drop traffic from the other direction. However, the MUX cable will duplicate northbound (server to T0) traffic and send it on both directions. The standby ToR has ACL rules to drop redundant northbound traffic.
 
 ![Basic Architecture Diagram](figures/Gemini%20Architecture%20Gif.gif)
 
