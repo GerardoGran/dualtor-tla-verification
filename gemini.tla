@@ -59,8 +59,21 @@ ActiveTor ==
       linkState: {"LinkUp"},
       muxState: {"MuxActive"} ]
           
+StandbyTor == 
+    [ alive: {TRUE},
+      name: T, 
+      xcvrd: {"-"},
+      heartbeat: {"on"},
+      heartbeatIn: SUBSET (T \union {"noResponse"}),
+      linkProber: {"LPStandby"}, 
+      linkState: {"LinkUp"},
+      muxState: {"MuxStandby"} ]
+          
 ActiveToRs ==
     { t \in {torA, torB} : t \in ActiveTor }
+        
+StandbyToRs ==
+    { t \in {torA, torB} : t \in StandbyTor }
 
 AliveToRs ==
     { t \in {torA, torB} : t.alive }
@@ -122,7 +135,8 @@ EXEC_LINKMANAGER_CHECK(t, otherTor) ==
             /\ t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
         \/  /\ mux.active # t.name
             /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
-        \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown", !.heartbeat = "on", !.xcvrd = "-"]
+
+        \* \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown", !.heartbeat = "on", !.xcvrd = "-"]
         \* \/  /\ t.muxState = "MuxWait"
         \*     /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]  MUX_XCVRD_FAIL
         
@@ -132,15 +146,23 @@ EXEC_LINKMANAGER_SWITCH(t, otherTor) ==
     /\ UNCHANGED otherTor
     /\ t.xcvrd = "switch"
     /\ t.muxState = "MuxWait"
-    /\ t.linkProber = "LPWait"
     /\ mux' = [ mux EXCEPT !.active = mux.next]
     /\  \/  /\ mux.next = t.name
             /\ t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
         \/  /\ mux.next # t.name
             /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
-        \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown", !.heartbeat = "on", !.xcvrd = "-"]
+
+        \* \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown", !.heartbeat = "on", !.xcvrd = "-"]
         \* \/  /\ t.muxState = "MuxWait"
         \*     /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]  MUX_XCVRD_FAIL
+
+\* FAIL_LINKMANAGER_SWITCH(t, otherTor) ==
+\*     \* Writing Switch direction
+\*     /\ UNCHANGED otherTor
+\*     /\ t.xcvrd = "switch"
+\*     /\ t.muxState = "MuxWait"
+\*     /\ mux' = [ mux EXCEPT !.active \in T]
+\*     /\  t' = [t EXCEPT !.muxState = "MuxUnknown", !.heartbeat = "on", !.xcvrd = "-"]
 
 ----------------------------
 
@@ -149,11 +171,11 @@ MuxStateActive(t, otherTor) ==
     /\  t.muxState = "MuxActive"
     /\  \/  /\ t.linkState = "LinkUp"
             \* LinkUp MuxStateActive Row
-            /\  \/  /\ t.linkProber \in {"LPStandby", "LPUnknown"}
+            /\  \/  /\ t.linkProber \in {"LPStandby", "LPUnknown", "LPWait"}
                     /\ TRIGGER_LINKMANAGER_CHECK(t)
-                \/  /\ t.linkProber = "LPWait"
-                    \* Check and suspend heartbeat
-                    /\ t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check", !.heartbeat = "off" ]
+                \* \/  /\ t.linkProber = "LPWait"
+                \*     \* Check and suspend heartbeat
+                \*     /\ t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check", !.heartbeat = "off" ]
             /\ UNCHANGED <<mux, otherTor>>
         \/  /\ t.linkState = "LinkDown"
             \* Switch to Standby
@@ -241,7 +263,7 @@ LinkProberWait(t, otherTor) ==
         \/ /\ otherTor.name = heartbeat
            /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
         \/ /\ "noResponse" = heartbeat
-           /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
+           /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
 
 
 LinkProberUnknown(t, otherTor) ==
@@ -282,6 +304,19 @@ LinkProberActive(t, otherTor) ==
           /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
        \/ /\ "noResponse" = heartbeat
           /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
+----------------------------------------------------------------------------
+
+MuxState(t, otherTor) == 
+    \/ MuxStateActive(t, otherTor)
+    \/ MuxStateWait(t, otherTor)
+    \/ MuxStateStandby(t, otherTor)
+    \/ MuxStateUnknown(t, otherTor)
+
+LinkProber(t, otherTor) == 
+    \/ LinkProberActive(t, otherTor)
+    \/ LinkProberWait(t, otherTor)
+    \/ LinkProberStandby(t, otherTor)
+    \/ LinkProberUnknown(t, otherTor)
 
 -----------------------------------------------------------------------------
 
@@ -289,10 +324,10 @@ System ==
     (****************************************************************************)
     (* Mux handling a switch or check command.                                           *)
     (****************************************************************************)
-    \/ EXEC_LINKMANAGER_SWITCH(torA, torB)
-    \/ EXEC_LINKMANAGER_SWITCH(torB, torA)
-    \/ EXEC_LINKMANAGER_CHECK(torA, torB)
-    \/ EXEC_LINKMANAGER_CHECK(torB, torA)
+    \* \/ EXEC_LINKMANAGER_SWITCH(torA, torB)
+    \* \/ EXEC_LINKMANAGER_SWITCH(torB, torA)
+    \* \/ EXEC_LINKMANAGER_CHECK(torA, torB)
+    \* \/ EXEC_LINKMANAGER_CHECK(torB, torA)
     (****************************************************************************)
     (* XCVRD and LinkMgrd                                                       *)
     (****************************************************************************)
@@ -375,6 +410,14 @@ Environment ==
 
 Fairness ==
     /\ WF_vars(System)
+    /\ WF_vars(MuxState(torA, torB))
+    /\ WF_vars(MuxState(torB, torA))
+    /\ WF_vars(LinkProber(torA, torB))
+    /\ WF_vars(LinkProber(torB, torA))
+    /\ WF_vars(SendHeartbeat(torA)) 
+    /\ WF_vars(SendHeartbeat(torB))
+    /\ WF_vars(LinkState(torA, torB)) 
+    /\ WF_vars(LinkState(torB, torA))
 
 WithoutFailureSpec ==
     Init /\ [][System]_vars /\ Fairness
@@ -407,7 +450,10 @@ Alias ==
     [
         torA |-> torA, torB |-> torB, mux |-> mux,
         active |-> { t.name : t \in ActiveToRs },
+        standby |-> { t.name : t \in StandbyToRs },
         MSWA |-> ENABLED MuxStateWait(torA, torB),
-        MSWB |-> ENABLED MuxStateWait(torB, torA)
+        MSWB |-> ENABLED MuxStateWait(torB, torA),
+        MSUA |-> ENABLED MuxStateUnknown(torA, torB),
+        MSUB |-> ENABLED MuxStateUnknown(torB, torA)
     ]
 =============================================================================
