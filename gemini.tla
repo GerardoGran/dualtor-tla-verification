@@ -90,7 +90,7 @@ Init ==
           xcvrd           |-> "check",
           heartbeat       |-> "on",
           heartbeatIn     |-> {},
-          linkProber      |-> "LPUnknown",
+          linkProber      |-> "LPWait",
           linkState       |-> "LinkDown",
           muxState        |-> "MuxWait" ]
     IN  /\ mux \in {f \in [ active: T, next: T ]: f.active = f.next}
