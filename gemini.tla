@@ -81,7 +81,7 @@ AliveToRs ==
 TypeOK == 
     /\ torA \in ToR
     /\ torB \in ToR    
-    /\ mux \in [ active: T, next: T ]
+    /\ mux \in [ active: T, next: T, serving: T \cup {"-"} ]
 
 Init ==
     LET InitialTor(name) == 
@@ -93,7 +93,7 @@ Init ==
           linkProber      |-> "LPWait",
           linkState       |-> "LinkDown",
           muxState        |-> "MuxWait" ]
-    IN  /\ mux \in {f \in [ active: T, next: T ]: f.active = f.next}
+    IN  /\ mux \in {f \in [ active: T, next: T, serving: T \cup {"-"} ]: f.active = f.next /\ f.serving # "-"}
         /\ torA = InitialTor("torA")
         /\ torB = InitialTor("torB")
 
@@ -109,52 +109,68 @@ Init ==
 (* or switching the MuxCable's direction                                                          *)
 (**************************************************************************************************)
 
-TRIGGER_LINKMANAGER_CHECK(t) ==
-    (**************************************************)
-    (* Sends check request to MUX via XCVRD.          *)
-    (* Transitions muxState to MuxWait.               *)
-    (* Defined to use in subsequent MuxState actions. *)
-    (**************************************************)
-    t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check" ]
-
-
-TRIGGER_LINKMANAGER_SWITCH(t, target) ==
+TRIGGER_CHECK(t) ==
     (************************************************************)
-    (* Sends write request to MUX via XCVRD.                    *)
-    (* Transitions muxState to MuxWait and linkProber to LPWait *)
-    (* target refers to ToR the Mux should point to.            *)
-    (* Defined to use in subsequent MuxState actions.           *)
+    (* Beginning of blocking check request between ToR and Mux. *)
+    (* Transitions muxState to MuxWait.                         *)
+    (* Mux must not be blocked by other request                 *)
     (************************************************************)
-    /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait" ]
-    /\  mux' = [ mux EXCEPT !.next = target.name]
+    /\ mux.serving = "-"
+    /\ t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check" ]
+    /\ mux' = [ mux EXCEPT !.serving = t.name]
 
-EXEC_LINKMANAGER_CHECK(t, otherTor) ==
-    /\ UNCHANGED <<mux, otherTor>>
+
+ACK_CHECK(t, otherTor) ==
+    (**********************************************)
+    (* Acknowledge Check request from serving tor.*)
+    (* Change muxState of tor to correct state.   *)
+    (* Unblock mux.                               *)
+    (**********************************************)
+    /\ UNCHANGED <<otherTor>>
     /\ t.xcvrd = "check"
+    /\ mux.serving = t.name
     /\  \/  /\ mux.active = t.name
             /\ t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
-        \/  /\ mux.active # t.name
+        \/  /\ mux.active = otherTor.name
             /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
+    /\ mux' = [ mux EXCEPT  !.serving = "-"]
 
-        \* \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown", !.heartbeat = "on", !.xcvrd = "-"]
-        \* \/  /\ t.muxState = "MuxWait"
-        \*     /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]  MUX_XCVRD_FAIL
+TRIGGER_SWITCH(t, target) ==
+    (*************************************************************)
+    (* Beginning of switch between ToR and Mux.                  *)
+    (* Transitions muxState to MuxWait and linkProber to LPWait. *)
+    (* Target refers to ToR the Mux should point to.             *)
+    (* Mux must not be blocked by other request                  *)
+    (*************************************************************)
+    /\ mux.serving = "-"
+    /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait" ]
+    /\  mux' = [ mux EXCEPT !.next = target.name, !.serving = t.name]   \* maybe move next away from mux into tor?
         
-
-EXEC_LINKMANAGER_SWITCH(t, otherTor) ==
-    \* Writing Switch direction
+ACK_SWITCH(t, otherTor) ==
+    (*********************************************************************)
+    (* Acknowledge Switch request from serving ToR.                      *)
+    (* ToR assumes correct switching action and changes to target state. *)
+    (* Unblock Mux.                                                      *)
+    (*********************************************************************)
     /\ UNCHANGED otherTor
     /\ t.xcvrd = "switch"
-    /\ t.muxState = "MuxWait"
-    /\ mux' = [ mux EXCEPT !.active = mux.next]
+    /\ mux.serving = t.name
     /\  \/  /\ mux.next = t.name
-            /\ t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
-        \/  /\ mux.next # t.name
-            /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
+            /\ t' = [ t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-"]
+        \/  /\ mux.next = otherTor.name
+            /\ t' = [ t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]
+    /\ mux' = [ mux EXCEPT !.serving = "-"]
 
-        \* \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown", !.heartbeat = "on", !.xcvrd = "-"]
-        \* \/  /\ t.muxState = "MuxWait"
-        \*     /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]  MUX_XCVRD_FAIL
+EXEC_SWITCH ==
+    (*****************************)
+    (* Execute switch operation. *)
+    (* Mux must be unblocked.    *)
+    (* Mux direction changes.    *)
+    (*****************************)
+    /\ UNCHANGED <<torA, torB>>
+    /\ mux.serving = "-"
+    /\ mux.active # mux.next    \* could be removed
+    /\ mux' = [ mux EXCEPT !.active = mux.next]
 
 \* FAIL_LINKMANAGER_SWITCH(t, otherTor) ==
 \*     \* Writing Switch direction
@@ -172,14 +188,14 @@ MuxStateActive(t, otherTor) ==
     /\  \/  /\ t.linkState = "LinkUp"
             \* LinkUp MuxStateActive Row
             /\  \/  /\ t.linkProber \in {"LPStandby", "LPUnknown", "LPWait"}
-                    /\ TRIGGER_LINKMANAGER_CHECK(t)
+                    /\ TRIGGER_CHECK(t)
                 \* \/  /\ t.linkProber = "LPWait"
                 \*     \* Check and suspend heartbeat
                 \*     /\ t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check", !.heartbeat = "off" ]
-            /\ UNCHANGED <<mux, otherTor>>
+            /\ UNCHANGED <<otherTor>>
         \/  /\ t.linkState = "LinkDown"
             \* Switch to Standby
-            /\ TRIGGER_LINKMANAGER_SWITCH(t, otherTor)
+            /\ TRIGGER_SWITCH(t, otherTor)
             /\ UNCHANGED otherTor
 
 MuxStateStandby(t, otherTor) ==
@@ -188,16 +204,16 @@ MuxStateStandby(t, otherTor) ==
     /\  \/  /\ t.linkState = "LinkUp"
         \* LinkUp MuxStateStandby Row
             /\  \/  /\ t.linkProber \in {"LPActive", "LPWait"}
-                    /\ TRIGGER_LINKMANAGER_CHECK(t)
-                    /\ UNCHANGED <<mux, otherTor>>
+                    /\ TRIGGER_CHECK(t)
+                    /\ UNCHANGED <<otherTor>>
                 \/  /\ t.linkProber = "LPUnknown"
                     \* Switch to Active
-                    /\ TRIGGER_LINKMANAGER_SWITCH(t, t)
+                    /\ TRIGGER_SWITCH(t, t)
                     /\ UNCHANGED otherTor
         \/  /\ t.linkState = "LinkDown"
         \* LinkDown MuxStateStandby Row
             /\ t.linkProber \in {"LPUnknown, LPWait"}
-            /\ TRIGGER_LINKMANAGER_CHECK(t)
+            /\ TRIGGER_CHECK(t)
             /\ UNCHANGED <<mux, otherTor>>
 
 MuxStateUnknown(t, otherTor) ==
@@ -205,19 +221,22 @@ MuxStateUnknown(t, otherTor) ==
     /\  t.muxState = "MuxUnknown"
     /\  \/  /\ t.linkState = "LinkUp"
             \* LinkUp MuxStateStandby Row
-            /\ TRIGGER_LINKMANAGER_CHECK(t)
+            /\ TRIGGER_CHECK(t)
         \/  /\ t.linkState = "LinkDown"
         \* LinkDown MuxStateStandby Row
             /\ t.linkProber \in {"LPUnknown, LPWait"}
-            /\ TRIGGER_LINKMANAGER_CHECK(t)
-    /\  UNCHANGED <<mux, otherTor>>
+            /\ TRIGGER_CHECK(t)
+    /\  UNCHANGED <<otherTor>>
 
 MuxStateWait(t, otherTor) ==
-    \*TODO Specify receiving XCVRD Response
     /\ t.alive
     /\ t.muxState = "MuxWait"
-    /\  \/  /\ EXEC_LINKMANAGER_CHECK(t, otherTor)
-        \/  /\ EXEC_LINKMANAGER_SWITCH(t, otherTor)
+    /\  \/ ACK_CHECK(t, otherTor)
+        \/ ACK_SWITCH(t, otherTor)
+        \* MuxStateWait Never enabled because it is not resending Check
+        \/  /\ TRIGGER_CHECK(t)
+            /\ UNCHANGED <<otherTor>>
+        \* \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown"] 
 
 -----------------------------------------------------------------------------
 
@@ -324,10 +343,9 @@ System ==
     (****************************************************************************)
     (* Mux handling a switch or check command.                                           *)
     (****************************************************************************)
-    \* \/ EXEC_LINKMANAGER_SWITCH(torA, torB)
-    \* \/ EXEC_LINKMANAGER_SWITCH(torB, torA)
-    \* \/ EXEC_LINKMANAGER_CHECK(torA, torB)
-    \* \/ EXEC_LINKMANAGER_CHECK(torB, torA)
+    \/ EXEC_SWITCH
+    \* \/ ACK_CHECK(torA, torB)
+    \* \/ ACK_CHECK(torB, torA)
     (****************************************************************************)
     (* XCVRD and LinkMgrd                                                       *)
     (****************************************************************************)
@@ -418,6 +436,7 @@ Fairness ==
     /\ WF_vars(SendHeartbeat(torB))
     /\ WF_vars(LinkState(torA, torB)) 
     /\ WF_vars(LinkState(torB, torA))
+    /\ WF_vars(EXEC_SWITCH)
 
 WithoutFailureSpec ==
     Init /\ [][System]_vars /\ Fairness
