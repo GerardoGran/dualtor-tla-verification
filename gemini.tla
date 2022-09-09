@@ -46,10 +46,12 @@ ToR ==
       heartbeatIn: SUBSET (T \union {"noResponse"}),
       linkProber: LPStates,
       linkState: LinkStates,
-      muxState: MuxStates ]
+      muxState: MuxStates,
+      target: T \union {"-"} ]
 
-\* "Goal" state for a ToR.
+
 ActiveTor == 
+    \* "Goal" state for a ToR.
     [ alive: {TRUE},
       name: T, 
       xcvrd: {"-"},
@@ -57,9 +59,11 @@ ActiveTor ==
       heartbeatIn: SUBSET (T \union {"noResponse"}),
       linkProber: {"LPActive"}, 
       linkState: {"LinkUp"},
-      muxState: {"MuxActive"} ]
+      muxState: {"MuxActive"},
+      target: {"-"} ]
           
 StandbyTor == 
+    \* The Standby ToR needs orchagent to be tunneling to the ActiveTor
     [ alive: {TRUE},
       name: T, 
       xcvrd: {"-"},
@@ -67,7 +71,8 @@ StandbyTor ==
       heartbeatIn: SUBSET (T \union {"noResponse"}),
       linkProber: {"LPStandby"}, 
       linkState: {"LinkUp"},
-      muxState: {"MuxStandby"} ]
+      muxState: {"MuxStandby"},
+      target: {"-"} ]
           
 ActiveToRs ==
     { t \in {torA, torB} : t \in ActiveTor }
@@ -81,7 +86,7 @@ AliveToRs ==
 TypeOK == 
     /\ torA \in ToR
     /\ torB \in ToR    
-    /\ mux \in [ active: T, next: T, serving: T \cup {"-"} ]
+    /\ mux \in [ active: T, next: T, serving: T \union {"-"} ]
 
 Init ==
     LET InitialTor(name) == 
@@ -92,8 +97,9 @@ Init ==
           heartbeatIn     |-> {},
           linkProber      |-> "LPWait",
           linkState       |-> "LinkDown",
-          muxState        |-> "MuxWait" ]
-    IN  /\ mux \in {f \in [ active: T, next: T, serving: T \cup {"-"} ]: f.active = f.next /\ f.serving # "-"}
+          muxState        |-> "MuxWait",
+          target          |-> "-" ]
+    IN  /\ mux \in {f \in [ active: T, next: T, serving: T \union {"-"} ]: f.active = f.next /\ f.serving # "-"}
         /\ torA = InitialTor("torA")
         /\ torB = InitialTor("torB")
 
@@ -131,9 +137,9 @@ ACK_CHECK(t, otherTor) ==
     /\ t.xcvrd = "check"
     /\ mux.serving = t.name
     /\  \/  /\ mux.active = t.name
-            /\ t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
+            /\ t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-", !.target = "-"]
         \/  /\ mux.active = otherTor.name
-            /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
+            /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-", !.target = "-"]
     /\ mux' = [ mux EXCEPT  !.serving = "-"]
 
 TRIGGER_SWITCH(t, target) ==
@@ -144,8 +150,8 @@ TRIGGER_SWITCH(t, target) ==
     (* Mux must not be blocked by other request                  *)
     (*************************************************************)
     /\ mux.serving = "-"
-    /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait" ]
-    /\  mux' = [ mux EXCEPT !.next = target.name, !.serving = t.name]   \* maybe move next away from mux into tor?
+    /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait", !.target = target.name ]
+    /\  mux' = [ mux EXCEPT !.serving = t.name]
         
 ACK_SWITCH(t, otherTor) ==
     (*********************************************************************)
@@ -156,11 +162,11 @@ ACK_SWITCH(t, otherTor) ==
     /\ UNCHANGED otherTor
     /\ t.xcvrd = "switch"
     /\ mux.serving = t.name
-    /\  \/  /\ mux.next = t.name
+    /\  \/  /\ t.target = t.name
             /\ t' = [ t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-"]
-        \/  /\ mux.next = otherTor.name
+        \/  /\ t.target = otherTor.name
             /\ t' = [ t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-"]
-    /\ mux' = [ mux EXCEPT !.serving = "-"]
+    /\ mux' = [ mux EXCEPT !.next = t.target, !.serving = "-"]
 
 EXEC_SWITCH ==
     (*****************************)
@@ -271,8 +277,8 @@ SendHeartbeat(t) ==
     (* to both ToR's                                                            *)
     (****************************************************************************)
     /\  mux.active = t.name  \* The MUX will drop traffic from ToR if it is not pointing to it
-    /\ torA' = [ torA EXCEPT !.heartbeatIn = @ \cup {t.name} ]
-    /\ torB' = [ torB EXCEPT !.heartbeatIn = @ \cup {t.name} ]
+    /\ torA' = [ torA EXCEPT !.heartbeatIn = @ \union {t.name} ]
+    /\ torB' = [ torB EXCEPT !.heartbeatIn = @ \union {t.name} ]
 
 LinkProberWait(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
