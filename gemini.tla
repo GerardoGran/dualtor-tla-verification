@@ -119,6 +119,7 @@ TRIGGER_CHECK(t) ==
     /\ t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check" ]
     /\ mux' = [ mux EXCEPT !.serving = t.name]
 
+\* NACK
 
 ACK_CHECK(t, otherTor) ==
     (**********************************************)
@@ -171,6 +172,7 @@ EXEC_SWITCH ==
     /\ mux.serving = "-"
     /\ mux.active # mux.next    \* could be removed
     /\ mux' = [ mux EXCEPT !.active = mux.next]
+
 
 \* FAIL_LINKMANAGER_SWITCH(t, otherTor) ==
 \*     \* Writing Switch direction
@@ -230,21 +232,22 @@ MuxStateUnknown(t, otherTor) ==
 
 MuxStateWait(t, otherTor) ==
     /\ t.alive
-    /\ t.muxState = "MuxWait"
-    /\  \/ ACK_CHECK(t, otherTor)
-        \/ ACK_SWITCH(t, otherTor)
-        \* MuxStateWait Never enabled because it is not resending Check
-        \/  /\ TRIGGER_CHECK(t)
-            /\ UNCHANGED <<otherTor>>
-        \* \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown"] 
+    /\ t.muxState = "MuxWait"  
+    \* MuxStateWait Never enabled because it is not resending Check
+    /\ TRIGGER_CHECK(t)
+    /\ UNCHANGED <<otherTor>>
+    \* \/  /\ t' = [t EXCEPT !.muxState = "MuxUnknown"] 
 
 -----------------------------------------------------------------------------
+\* Mux-Side Actions
 
-\* MuxXCVRD ==
-\*     \* 
-\*     /\ UNCHANGED <<torA, torB>>
-\*     /\ mux' = [ mux EXCEPT !.active = mux.next ]
-
+MuxCommands ==
+    \/ EXEC_SWITCH
+    \/ ACK_CHECK(torA, torB)
+    \/ ACK_SWITCH(torA, torB)
+    \/ ACK_CHECK(torB, torA)
+    \/ ACK_SWITCH(torB, torA)
+-----------------------------------------------------------------------------
 \* State machine page 10 of the Powerpoint presentation as of 08/25/2022
 
 LinkState(t, otherTor) ==
@@ -344,8 +347,10 @@ System ==
     (* Mux handling a switch or check command.                                           *)
     (****************************************************************************)
     \/ EXEC_SWITCH
-    \* \/ ACK_CHECK(torA, torB)
-    \* \/ ACK_CHECK(torB, torA)
+    \/ ACK_CHECK(torA, torB)
+    \/ ACK_SWITCH(torA, torB)
+    \/ ACK_CHECK(torB, torA)
+    \/ ACK_SWITCH(torB, torA)
     (****************************************************************************)
     (* XCVRD and LinkMgrd                                                       *)
     (****************************************************************************)
@@ -436,7 +441,7 @@ Fairness ==
     /\ WF_vars(SendHeartbeat(torB))
     /\ WF_vars(LinkState(torA, torB)) 
     /\ WF_vars(LinkState(torB, torA))
-    /\ WF_vars(EXEC_SWITCH)
+    /\ WF_vars(MuxCommands)
 
 WithoutFailureSpec ==
     Init /\ [][System]_vars /\ Fairness
