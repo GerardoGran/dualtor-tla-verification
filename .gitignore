@@ -2,3 +2,6 @@ states/
 .vscode
 *.toolbox
 *.out 
+*.pdf
+*.tex
+*.dvi
