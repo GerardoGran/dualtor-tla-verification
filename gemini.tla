@@ -280,58 +280,17 @@ SendHeartbeat(t) ==
     /\ torA' = [ torA EXCEPT !.heartbeatIn = @ \union {t.name} ]
     /\ torB' = [ torB EXCEPT !.heartbeatIn = @ \union {t.name} ]
 
-LinkProberWait(t, otherTor) ==
+ReadHeartbeat(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
     /\ t.alive
     /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "LPWait"
-    /\ \E heartbeat \in t.heartbeatIn:
-        \/ /\ t.name = heartbeat
-           /\ t' = [t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat}]
-        \/ /\ otherTor.name = heartbeat
-           /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
-        \/ /\ "noResponse" = heartbeat
-           /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
+    /\  \/ \E heartbeat \in t.heartbeatIn:
+            /\  \/  /\ t.name = heartbeat
+                    /\ t' = [t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat}]
 
+                \/  /\ otherTor.name = heartbeat
+                    /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
 
-LinkProberUnknown(t, otherTor) ==
-    /\ UNCHANGED <<otherTor, mux>>
-    /\ t.alive
-    /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "LPUnknown"
-    /\ \E heartbeat \in t.heartbeatIn:
-        \/ /\ t.name = heartbeat
-           /\ t' = [t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat}]
-        \/ /\ otherTor.name = heartbeat
-           /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
-        \/ /\ "noResponse" = heartbeat
-           /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
-
-LinkProberStandby(t, otherTor) ==
-    /\ UNCHANGED <<otherTor, mux>>
-    /\ t.alive
-    /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "LPStandby"
-    /\ \E heartbeat \in t.heartbeatIn:
-       \/ /\ t.name = heartbeat
-          /\ t' = [t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat}]
-       \/ /\ otherTor.name = heartbeat
-          /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
-       \/ /\ "noResponse" = heartbeat
-          /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
-
-LinkProberActive(t, otherTor) ==
-    /\ UNCHANGED <<otherTor, mux>>
-    /\ t.alive
-    /\ t.linkState = "LinkUp"
-    /\ t.linkProber = "LPActive"
-    /\ \E heartbeat \in t.heartbeatIn:
-       \/ /\ t.name = heartbeat
-          /\ t' = [t EXCEPT !.heartbeatIn = @ \ {heartbeat}]
-       \/ /\ otherTor.name = heartbeat
-          /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
-       \/ /\ "noResponse" = heartbeat
-          /\ t' = [t EXCEPT !.linkProber = "LPUnknown", !.heartbeatIn = @ \ {heartbeat}]
 ----------------------------------------------------------------------------
 
 MuxState(t, otherTor) == 
@@ -339,12 +298,6 @@ MuxState(t, otherTor) ==
     \/ MuxStateWait(t, otherTor)
     \/ MuxStateStandby(t, otherTor)
     \/ MuxStateUnknown(t, otherTor)
-
-LinkProber(t, otherTor) == 
-    \/ LinkProberActive(t, otherTor)
-    \/ LinkProberWait(t, otherTor)
-    \/ LinkProberStandby(t, otherTor)
-    \/ LinkProberUnknown(t, otherTor)
 
 -----------------------------------------------------------------------------
 
@@ -376,14 +329,8 @@ System ==
     (****************************************************************************)
     (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
     (****************************************************************************)
-    \/ LinkProberActive(torA, torB)
-    \/ LinkProberActive(torB, torA)
-    \/ LinkProberWait(torA, torB)
-    \/ LinkProberWait(torB, torA)
-    \/ LinkProberStandby(torA, torB)
-    \/ LinkProberStandby(torB, torA)
-    \/ LinkProberUnknown(torA, torB)
-    \/ LinkProberUnknown(torB, torA)
+    \/ ReadHeartbeat(torA, torB)
+    \/ ReadHeartbeat(torB, torA)
     (****************************************************************************)
     (* Notification from the kernel that a physical link (L1) came up.          *)
     (****************************************************************************)
@@ -441,8 +388,8 @@ Fairness ==
     /\ WF_vars(System)
     /\ WF_vars(MuxState(torA, torB))
     /\ WF_vars(MuxState(torB, torA))
-    /\ WF_vars(LinkProber(torA, torB))
-    /\ WF_vars(LinkProber(torB, torA))
+    /\ WF_vars(ReadHeartbeat(torA, torB))
+    /\ WF_vars(ReadHeartbeat(torB, torA))
     /\ WF_vars(SendHeartbeat(torA)) 
     /\ WF_vars(SendHeartbeat(torB))
     /\ WF_vars(LinkState(torA, torB)) 
