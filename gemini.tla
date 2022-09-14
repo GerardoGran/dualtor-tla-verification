@@ -132,16 +132,12 @@ ACK_CHECK(t, otherTor) ==
     (**********************************************)
     /\ UNCHANGED <<otherTor>>
     /\ t.xcvrd = "check"
-    /\  \/  /\  mux.serving = t.name
-            /\  \/  /\ mux.active = t.name
-                    /\ t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
-                \/  /\ mux.active = otherTor.name
-                    /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
-            /\ mux' = [ mux EXCEPT  !.serving = "-"]
-        \/  /\ mux.serving # t.name
-            \* Busy with otherTor or timeout, reply NACK
-            /\ t' =  [ t EXCEPT !.muxState = "MuxUnknown", !.xcvrd = "-"]
-            /\ UNCHANGED mux
+    /\  mux.serving = t.name
+    /\  \/  /\ mux.active = t.name
+            /\ t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
+        \/  /\ mux.active = otherTor.name
+            /\ t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
+    /\ mux' = [ mux EXCEPT  !.serving = "-"]
 
 
 TRIGGER_SWITCH(t, target) ==
@@ -154,8 +150,6 @@ TRIGGER_SWITCH(t, target) ==
     /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait", !.target = target.name ]
     /\  \/  /\  mux.serving = "-"
             /\  mux' = [ mux EXCEPT !.serving = t.name]
-            
-
 
         
 ACK_SWITCH(t, otherTor) ==
@@ -166,16 +160,12 @@ ACK_SWITCH(t, otherTor) ==
     (*********************************************************************)
     /\ UNCHANGED otherTor
     /\ t.xcvrd = "switch"
-    /\  \/  /\ mux.serving = t.name
-            /\  \/  /\ t.target = t.name
-                    /\ t' = [ t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-", !.target = "-"]
-                \/  /\ t.target = otherTor.name
-                    /\ t' = [ t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-", !.target = "-"]
-            /\ mux' = [ mux EXCEPT !.next = t.target, !.serving = "-"]
-        \/  /\ mux.serving # t.name
-            \* Busy with otherTor or timeout, reply NACK
-            /\ t' =  [ t EXCEPT !.MuxState = "MuxUnknown", !.xcvrd = "-", !.target = "-"]
-            /\ UNCHANGED mux
+    /\ mux.serving = t.name
+    /\  \/  /\ t.target = t.name
+            /\ t' = [ t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-", !.target = "-"]
+        \/  /\ t.target = otherTor.name
+            /\ t' = [ t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-", !.target = "-"]
+    /\ mux' = [ mux EXCEPT !.next = t.target, !.serving = "-"]
 
 EXEC_SWITCH ==
     (*****************************)
@@ -187,6 +177,29 @@ EXEC_SWITCH ==
     /\ mux.serving = "-"
     /\ mux.active # mux.next    \* could be removed
     /\ mux' = [ mux EXCEPT !.active = mux.next]
+
+NACK(t, otherTor) ==
+    (*************************************************************)
+    (* If Mux is serving other ToR, return a no acknowledgement. *)
+    (* Unblock ToR.                                              *)
+    (* Clear t.xcvrd.                                            *)
+    (* Transition MuxState to MuxStateUnknown                    *)
+    (*************************************************************)
+    /\ UNCHANGED otherTor
+    /\ t.xcvrd \in {"check", "switch"}
+    /\ mux.serving # t.name
+    /\ t' =  [ t EXCEPT !.muxState = "MuxUnknown", !.xcvrd = "-", !.target = "-"]
+    /\ UNCHANGED mux
+
+\* Mux-Side Actions
+MuxCommands ==
+    \/ EXEC_SWITCH
+    \/ ACK_CHECK(torA, torB)
+    \/ ACK_CHECK(torB, torA)
+    \/ ACK_SWITCH(torA, torB)
+    \/ ACK_SWITCH(torB, torA)
+    \/ NACK(torA, torB)
+    \/ NACK(torB, torA)
 
 ----------------------------
 
@@ -240,15 +253,7 @@ MuxStateWait(t, otherTor) ==
     \* If Mux is busy, go to Unknown
     /\ UNCHANGED <<t, otherTor, mux>>
 
------------------------------------------------------------------------------
-\* Mux-Side Actions
 
-MuxCommands ==
-    \/ EXEC_SWITCH
-    \/ ACK_CHECK(torA, torB)
-    \/ ACK_SWITCH(torA, torB)
-    \/ ACK_CHECK(torB, torA)
-    \/ ACK_SWITCH(torB, torA)
 -----------------------------------------------------------------------------
 
 \* State machine page 09 of the Powerpoint presentation as of 08/25/2022
@@ -303,6 +308,8 @@ System ==
     \/ ACK_SWITCH(torA, torB)
     \/ ACK_CHECK(torB, torA)
     \/ ACK_SWITCH(torB, torA)
+    \/ NACK(torA, torB)
+    \/ NACK(torB, torA)
     (****************************************************************************)
     (* XCVRD and LinkMgrd                                                       *)
     (****************************************************************************)
@@ -359,15 +366,6 @@ FailHeartbeat(t, otherTor) ==
        \/ /\ \E heartbeat \in SUBSET torB.heartbeatIn:
                 /\ torB' = [ torB EXCEPT !.heartbeatIn = heartbeat ]
                 /\ UNCHANGED torA
-
-NACK ==
-    (*********************************************************)
-    (* If Mux is serving a ToR, return a no acknowledgement. *) \*TODO Model Wait <-> Unknown loop: Needed to avoid competing for Active in Mux
-    (* Unblock ToR.                                          *)
-    (* Clear t.xcvrd.                                        *)
-    (* Transition MuxState to MuxStateUnknown                *)
-    (*********************************************************)
-    TRUE
 
 
 FailTor(t, otherTor) ==
@@ -433,7 +431,7 @@ Fairness ==
     /\ WF_vars(SendHeartbeat(torB))
     /\ WF_vars(LinkState(torA, torB)) 
     /\ WF_vars(LinkState(torB, torA))
-    /\ WF_vars(EXEC_SWITCH)
+    /\ WF_vars(MuxCommands)
 
 WithoutFailureSpec ==
     Init /\ [][System]_vars /\ Fairness
