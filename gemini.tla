@@ -204,6 +204,7 @@ MuxCommands ==
 ----------------------------
 
 
+
 MuxStateActive(t, otherTor) ==
     /\ t.alive
     /\  t.muxState = "MuxActive"
@@ -367,6 +368,12 @@ FailHeartbeat(t, otherTor) ==
                 /\ torB' = [ torB EXCEPT !.heartbeatIn = heartbeat ]
                 /\ UNCHANGED torA
 
+TimeoutHeartbeat(t, otherTor) ==
+    /\ UNCHANGED <<otherTor, mux>>
+    /\ t.alive
+    /\ t.linkState = "LinkUp"
+    /\ t.heartbeatIn = {}
+    /\ t' = [ t EXCEPT !.linkProber = "LPUnknown" ]
 
 FailTor(t, otherTor) ==
     (*****************************)
@@ -402,8 +409,10 @@ FailMux ==
 
 Environment ==
     \* \/ FailMux
-    \/ FailHeartbeat(torA, torB)
-    \/ FailHeartbeat(torB, torA)
+    \/ TimeoutHeartbeat(torA, torB)
+    \/ TimeoutHeartbeat(torB, torA)
+    \* \/ FailHeartbeat(torA, torB)
+    \* \/ FailHeartbeat(torB, torA)
     \* \/ FailTor(torA, torB)
     \* \/ FailTor(torB, torA)
     \* \/ FailXCVRD(torA, torB)
