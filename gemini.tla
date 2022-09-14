@@ -114,6 +114,8 @@ Init ==
 (* or switching the MuxCable's direction                                                          *)
 (**************************************************************************************************)
 
+\*TODO WRITE_XCVRD(t, action) ==
+
 TRIGGER_CHECK(t) ==
     (************************************************************)
     (* Beginning of blocking check request between ToR and Mux. *)
@@ -121,8 +123,8 @@ TRIGGER_CHECK(t) ==
     (* Mux must not be blocked by other request                 *)
     (************************************************************)
     /\ t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check" ]
-    /\  \/  /\ mux.serving = "-"
-            /\ mux' = [ mux EXCEPT !.serving = t.name]
+    /\ mux.serving = "-"
+    /\ mux' = [ mux EXCEPT !.serving = t.name]
 
 ACK_CHECK(t, otherTor) ==
     (**********************************************)
@@ -148,8 +150,8 @@ TRIGGER_SWITCH(t, target) ==
     (* Mux must not be blocked by other request                  *)
     (*************************************************************)
     /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait", !.target = target.name ]
-    /\  \/  /\  mux.serving = "-"
-            /\  mux' = [ mux EXCEPT !.serving = t.name]
+    /\  mux.serving = "-"
+    /\  mux' = [ mux EXCEPT !.serving = t.name]
 
         
 ACK_SWITCH(t, otherTor) ==
@@ -185,6 +187,9 @@ NACK(t, otherTor) ==
     (* Clear t.xcvrd.                                            *)
     (* Transition MuxState to MuxStateUnknown                    *)
     (*************************************************************)
+
+    \* This happens if the MUX cable has no power or is unplugged, etc.
+
     /\ UNCHANGED otherTor
     /\ t.xcvrd \in {"check", "switch"}
     /\ mux.serving # t.name
@@ -201,7 +206,6 @@ MuxCommands ==
     \/ NACK(torA, torB)
     \/ NACK(torB, torA)
 
-----------------------------
 ----------------------------------------------------------------------------
 
 (***************************************************************************************************)
@@ -384,6 +388,13 @@ FailServerHeartbeat ==
     (*************************************************)
     TRUE
 
+FailMuxCable ==
+    (*******************************************************)
+    (* Mux Cable loses power, stops responding to requests *)
+    (*******************************************************)
+    /\ torA' = [torA EXCEPT !.linkState = "LinkDown"]
+    /\ torB' = [torB EXCEPT !.linkState = "LinkDown"]
+    /\ TRUE
 
 FailServer ==
     (************************************************************)
@@ -391,9 +402,9 @@ FailServer ==
     (* Mux loses power, Heartbeats fail, LinkDown on both ToR's *)  \*TODO Potentially LinkState goes down in different points of time.
     (************************************************************)  \*TODO re initialize MUX when Server goes up
     /\ FailServerHeartbeat
-    /\ TRUE
+    /\ FailMuxCable
 
-FailHeartbeat(t, otherTor) ==
+FailHeartbeat ==
     (*****************************************************************************)
     (* Sender fails to send heartbeat to ToR's making them go into unknown state *)
     (*****************************************************************************)
@@ -407,9 +418,6 @@ FailHeartbeat(t, otherTor) ==
 
 TimeoutHeartbeat(t, otherTor) ==
     /\ UNCHANGED <<otherTor, mux>>
-    /\ t.alive
-    /\ t.linkState = "LinkUp"
-    /\ t.heartbeatIn = {}
     /\ t' = [ t EXCEPT !.linkProber = "LPUnknown" ]
 
 FailTor(t, otherTor) ==
@@ -417,7 +425,7 @@ FailTor(t, otherTor) ==
     (* TOR powers off or crashes *)
     (*****************************)
     /\ UNCHANGED <<otherTor, mux>>
-    /\ t' = [t EXCEPT !.alive = FALSE]
+    /\ t' = [t EXCEPT !.alive = FALSE] \*TODO Set to initial states
 
 CrashXCVRD(t, otherTor) ==
     (***************************************************************)
@@ -427,6 +435,7 @@ CrashXCVRD(t, otherTor) ==
     (***************************************************************)
     TRUE
 
+\*TODO FailXCVRDWrite
 
 FailLinkState(t, otherTor) ==
     (******************)
@@ -448,8 +457,7 @@ Environment ==
     \* \/ FailMux
     \/ TimeoutHeartbeat(torA, torB)
     \/ TimeoutHeartbeat(torB, torA)
-    \* \/ FailHeartbeat(torA, torB)
-    \* \/ FailHeartbeat(torB, torA)
+    \* \/ FailHeartbeat
     \* \/ FailTor(torA, torB)
     \* \/ FailTor(torB, torA)
     \* \/ FailXCVRD(torA, torB)
