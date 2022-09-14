@@ -202,7 +202,44 @@ MuxCommands ==
     \/ NACK(torB, torA)
 
 ----------------------------
+----------------------------------------------------------------------------
 
+(***************************************************************************************************)
+(* Anytime there is a state change by LinkProber or CHECK, LinkManager does StateTransitionHandler *)
+(* to evaluate the state combination of all the Submodules. This Action decides what action must   *)
+(* be taken (SWITCH or CHECK).                                                                     *)
+(***************************************************************************************************)
+StateTransitionHandler(t, otherTor) ==
+    \*LinkUp Table
+    \/  /\  t.linkState = "LinkUp"
+            \*MuxActive row
+        /\  \/  /\  t.muxState =  "MuxActive"
+                /\  t.linkProber \in {"LPStanby", "LPUnknown", "LPWait"}
+                /\  TRIGGER_CHECK(t)
+            \*MuxStandby row
+            \/  /\  t.muxState = "MuxStandby"
+                /\  \/  /\  t.linkProber \in {"LPActive", "LPWait"}
+                        /\  TRIGGER_CHECK(t)
+                    \/  /\  t.linkProber = "LPUnknown"
+                        /\  TRIGGER_SWITCH(t, t)
+            \*MuxUnknown row
+            \/  /\  t.muxState = "MuxUnknown"
+                /\ TRIGGER_CHECK(t)
+    \*LinkDown Table
+    \/  /\  t.linkState = "LinkDown"
+            \*MuxActive row
+        /\  \/  /\  t.muxState =  "MuxActive"
+                /\  TRIGGER_SWITCH(t, otherTor)
+            \*MuxStandby row
+            \/  /\  t.muxState = "MuxStandby"
+                /\  t.linkProber \in {"LPUnknown", "LPWait"}
+                /\  TRIGGER_CHECK(t)
+            \*MuxUnknown row
+            \/  /\  t.muxState = "MuxUnknown"
+                /\  t.linkProber \in {"LPUnknown", "LPWait"}
+                /\  TRIGGER_CHECK(t)
+
+---------------------------------------------------------------------------
 
 
 MuxStateActive(t, otherTor) ==
