@@ -122,9 +122,12 @@ TRIGGER_CHECK(t) ==
     (* Transitions muxState to MuxWait.                         *)
     (* Mux must not be blocked by other request                 *)
     (************************************************************)
+    /\ t.xcvrd = "-"
     /\ t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check" ]
-    /\ mux.serving = "-"
-    /\ mux' = [ mux EXCEPT !.serving = t.name]
+    /\  \/  /\ mux.serving = "-"
+            /\ mux' = [ mux EXCEPT !.serving = t.name]
+        \/  /\ mux.serving # "-"
+            /\ UNCHANGED mux
 
 ACK_CHECK(t, otherTor) ==
     (**********************************************)
@@ -149,9 +152,12 @@ TRIGGER_SWITCH(t, target) ==
     (* Target refers to ToR the Mux should point to.             *)
     (* Mux must not be blocked by other request                  *)
     (*************************************************************)
+    /\ t.xcvrd = "-"
     /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait", !.target = target.name ]
-    /\  mux.serving = "-"
-    /\  mux' = [ mux EXCEPT !.serving = t.name]
+    /\  \/  /\  mux.serving = "-"
+            /\  mux' = [ mux EXCEPT !.serving = t.name]
+        \/  /\ mux.serving # "-"
+            /\ UNCHANGED mux
 
         
 ACK_SWITCH(t, otherTor) ==
@@ -477,15 +483,16 @@ Environment ==
 
 Fairness ==
     /\ WF_vars(System)
-    /\ WF_vars(MuxState(torA, torB))
-    /\ WF_vars(MuxState(torB, torA))
-    /\ WF_vars(ReadHeartbeat(torA, torB))
-    /\ WF_vars(ReadHeartbeat(torB, torA))
+    /\ WF_vars(MuxCommands)
     /\ WF_vars(SendHeartbeat(torA)) 
     /\ WF_vars(SendHeartbeat(torB))
     /\ WF_vars(LinkState(torA, torB)) 
     /\ WF_vars(LinkState(torB, torA))
-    /\ WF_vars(MuxCommands)
+    /\ WF_vars(MuxState(torA, torB))
+    /\ WF_vars(MuxState(torB, torA))
+    /\ WF_vars(ReadHeartbeat(torA, torB))
+    /\ WF_vars(ReadHeartbeat(torB, torA))
+
 
 WithoutFailureSpec ==
     Init /\ [][System]_vars /\ Fairness
@@ -518,6 +525,12 @@ Alias ==
     [
         torA |-> torA, torB |-> torB, mux |-> mux,
         active |-> { t.name : t \in ActiveToRs },
-        standby |-> { t.name : t \in StandbyToRs }
+        standby |-> { t.name : t \in StandbyToRs },
+        ack_ch_A |-> ENABLED ACK_CHECK(torA, torB),
+        ack_ch_B |-> ENABLED ACK_CHECK(torB, torA),
+        ack_sw_A |-> ENABLED ACK_SWITCH(torA, torB),
+        ack_sw_B |-> ENABLED ACK_SWITCH(torB, torA),
+        trigger_ch_A |-> ENABLED TRIGGER_CHECK(torA),
+        trigger_ch_B |-> ENABLED TRIGGER_CHECK(torB)
     ]
 =============================================================================
