@@ -209,8 +209,6 @@ MuxCommands ==
     \/ ACK_CHECK(torB, torA)
     \/ ACK_SWITCH(torA, torB)
     \/ ACK_SWITCH(torB, torA)
-    \/ NACK(torA, torB)
-    \/ NACK(torB, torA)
 
 ----------------------------------------------------------------------------
 
@@ -321,21 +319,49 @@ SendHeartbeat(t) ==
     /\ torB' = [ torB EXCEPT !.heartbeatIn = @ \union {t.name} ]
 
 ReadHeartbeat(t, otherTor) ==
-    /\ UNCHANGED <<otherTor, mux>>
+    /\ UNCHANGED <<otherTor>>
     /\ t.alive
     /\ t.linkState = "LinkUp"
-    /\  \/ \E heartbeat \in t.heartbeatIn:
-            /\  \/  /\ t.name = heartbeat
-                    /\ t' = [t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat}]
-
-                \/  /\ otherTor.name = heartbeat
-                    /\ t' = [t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat}]
+    /\  \E heartbeat \in t.heartbeatIn:
+        /\  \/  /\ t.name = heartbeat
+                \* Incoming heartbeat is self. LPActive
+                /\  \/  /\ t.muxState \in {"MuxStandby", "MuxUnknown"}
+                        \* Trigger Check, set linkProber state and remove heartbeat
+                        /\  \/  /\  t.xcvrd = "-"   \* If nothing pending on xcvrd trigger check
+                                /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check", !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat} ]
+                                /\  \/  /\ mux.serving = "-"    \* If mux is free, serve t
+                                        /\ mux' = [ mux EXCEPT !.serving = t.name]
+                                    \/  /\ mux.serving # "-"    \* Else no change on mux
+                                        /\ UNCHANGED mux
+                            \/  /\  t.xcvrd # "-"   \* If something pending on xcvrd only change linkProber and remove heartbeat
+                                /\  t' = [ t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat} ]
+                                /\  UNCHANGED mux
+                        
+                    \/  /\  t.muxState \notin {"MuxStandby", "MuxUnknown"}
+                        /\  t' = [ t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat} ]
+                        /\  UNCHANGED mux
+            \/  /\ otherTor.name = heartbeat
+                /\  \/  /\ t.muxState \in {"MuxActive", "MuxUnknown"}
+                \* Trigger Check, set linkProber state and remove heartbeat
+                        /\  \/  /\  t.xcvrd = "-"   \* If nothing pending on xcvrd trigger check
+                                /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check", !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat} ]
+                                /\  \/  /\ mux.serving = "-"    \* If mux is free, serve t
+                                        /\ mux' = [ mux EXCEPT !.serving = t.name]
+                                    \/  /\ mux.serving # "-"    \* Else no change on mux
+                                        /\ UNCHANGED mux
+                            \/  /\  t.xcvrd # "-"   \* If something pending on xcvrd only change linkProber and remove heartbeat
+                                /\  t' = [ t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat} ]
+                                /\  UNCHANGED mux
+                    \/  /\ t.muxState \notin {"MuxActive", "MuxUnknown"}
+                        /\ t' = [ t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat} ]
+                        /\  UNCHANGED mux
+                    
 
 ----------------------------------------------------------------------------
 
 MuxState(t, otherTor) == 
     \/ MuxStateActive(t, otherTor)
-    \/ MuxStateWait(t, otherTor)
+    \/ MuxStateWait(t, otherTor) 
     \/ MuxStateStandby(t, otherTor)
     \/ MuxStateUnknown(t, otherTor)
 
@@ -423,8 +449,23 @@ FailHeartbeat ==
                 /\ UNCHANGED torA
 
 TimeoutHeartbeat(t, otherTor) ==
-    /\ UNCHANGED <<otherTor, mux>>
-    /\ t' = [ t EXCEPT !.linkProber = "LPUnknown" ]
+    /\ UNCHANGED <<otherTor>>
+    /\  \/  /\ t.muxState \in {"MuxActive", "MuxUnknown"}
+            \* Trigger Check, set linkProber state
+            /\  \/  /\  t.xcvrd = "-"   \* If nothing pending on xcvrd trigger check
+                    /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check", !.linkProber = "LPUnknown"]
+                    /\  \/  /\ mux.serving = "-"    \* If mux is free, serve t
+                            /\ mux' = [ mux EXCEPT !.serving = t.name]
+                        \/  /\ mux.serving # "-"    \* Else no change on mux
+                            /\ UNCHANGED mux
+                \/  /\  t.xcvrd # "-"   \* If something pending on xcvrd only change linkProber
+                    /\  t' = [ t EXCEPT !.linkProber = "LPUnknown"]
+        \/  /\ t.muxState = "MuxStandby"
+            \* Trigger Switch, set linkProber state
+            /\ TRIGGER_SWITCH(t, t)
+        \/  /\ t.muxState = "MuxWait"
+            /\ t' = [ t EXCEPT !.linkProber = "LPUnknown" ]
+            /\ UNCHANGED mux
 
 FailTor(t, otherTor) ==
     (*****************************)
@@ -484,9 +525,11 @@ Environment ==
 Fairness ==
     /\ WF_vars(System)
     /\ WF_vars(MuxCommands)
-    /\ WF_vars(SendHeartbeat(torA)) 
+    /\ SF_vars(NACK(torA, torB))
+    /\ SF_vars(NACK(torB, torA))
+    /\ WF_vars(SendHeartbeat(torA))
     /\ WF_vars(SendHeartbeat(torB))
-    /\ WF_vars(LinkState(torA, torB)) 
+    /\ WF_vars(LinkState(torA, torB))
     /\ WF_vars(LinkState(torB, torA))
     /\ WF_vars(MuxState(torA, torB))
     /\ WF_vars(MuxState(torB, torA))
@@ -531,6 +574,8 @@ Alias ==
         ack_sw_A |-> ENABLED ACK_SWITCH(torA, torB),
         ack_sw_B |-> ENABLED ACK_SWITCH(torB, torA),
         trigger_ch_A |-> ENABLED TRIGGER_CHECK(torA),
-        trigger_ch_B |-> ENABLED TRIGGER_CHECK(torB)
+        trigger_ch_B |-> ENABLED TRIGGER_CHECK(torB),
+        nack_A |-> ENABLED NACK(torA, torB),
+        nack_B |-> ENABLED NACK(torB, torA)
     ]
 =============================================================================
