@@ -58,9 +58,9 @@ ActiveTor ==
       xcvrd: {"-"},
       heartbeat: {"on"},
       heartbeatIn: SUBSET (T \union {"noResponse"}),
-      linkProber: {"LPActive"}, 
+      linkProber: {"LPActive", "LPUnknown"}, 
       linkState: {"LinkUp"},
-      muxState: {"MuxActive"},
+      muxState: {"MuxActive", "MuxWait"},
       target: {"-"} ]
           
 StandbyTor == 
@@ -568,14 +568,6 @@ Alias ==
     [
         torA |-> torA, torB |-> torB, mux |-> mux,
         active |-> { t.name : t \in ActiveToRs },
-        standby |-> { t.name : t \in StandbyToRs },
-        ack_ch_A |-> ENABLED ACK_CHECK(torA, torB),
-        ack_ch_B |-> ENABLED ACK_CHECK(torB, torA),
-        ack_sw_A |-> ENABLED ACK_SWITCH(torA, torB),
-        ack_sw_B |-> ENABLED ACK_SWITCH(torB, torA),
-        trigger_ch_A |-> ENABLED TRIGGER_CHECK(torA),
-        trigger_ch_B |-> ENABLED TRIGGER_CHECK(torB),
-        nack_A |-> ENABLED NACK(torA, torB),
-        nack_B |-> ENABLED NACK(torB, torA)
+        standby |-> { t.name : t \in StandbyToRs }
     ]
 =============================================================================
