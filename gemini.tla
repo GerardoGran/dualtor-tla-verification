@@ -37,7 +37,7 @@ LinkStates == {"LinkUp", "LinkDown"}
 MuxStates == {"MuxActive", "MuxStandby", "MuxWait", "MuxUnknown"}
 
 \* MUX_XCVRD_ (page 11)
-XCVRDStates == {"switch", "check", "-"}
+XCVRDStates == {"switch", "check", "-", "crashed"}
 
 ToR ==
     [ alive: BOOLEAN, 
@@ -55,7 +55,7 @@ ActiveTor ==
     \* "Goal" state for a ToR.
     [ alive: {TRUE},
       name: T, 
-      xcvrd: {"-"},
+      xcvrd: XCVRDStates,
       heartbeat: {"on"},
       heartbeatIn: SUBSET (T \union {"noResponse"}),
       linkProber: {"LPActive", "LPUnknown"}, 
@@ -67,12 +67,12 @@ StandbyTor ==
     \* The Standby ToR needs orchagent to be tunneling to the ActiveTor
     [ alive: {TRUE},
       name: T, 
-      xcvrd: {"-"},
+      xcvrd: XCVRDStates,
       heartbeat: {"on"},
       heartbeatIn: SUBSET (T \union {"noResponse"}),
-      linkProber: {"LPStandby"}, 
+      linkProber: {"LPStandby", "LPUnknown"}, 
       linkState: {"LinkUp"},
-      muxState: {"MuxStandby"},
+      muxState: {"MuxStandby", "MuxWait"},
       target: {"-"} ]
           
 ActiveToRs ==
@@ -116,18 +116,25 @@ Init ==
 
 \*TODO WRITE_XCVRD(t, action) ==
 
-TRIGGER_CHECK(t) ==
+XCVRD_FAIL_RESPONSE(t, otherTor) ==
+    /\  t.xcvrd = "crashed"
+    /\  t' = [ t EXCEPT !.muxState = "MuxStandby", !.target = "-"]
+    /\  UNCHANGED <<mux, otherTor>>
+
+TRIGGER_CHECK(t, otherTor) ==
     (************************************************************)
     (* Beginning of blocking check request between ToR and Mux. *)
     (* Transitions muxState to MuxWait.                         *)
     (* Mux must not be blocked by other request                 *)
     (************************************************************)
-    /\  t.xcvrd = "-"
-    /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check" ]
-    /\  \/  /\  mux.serving = "-"
-            /\  mux' = [ mux EXCEPT !.serving = t.name]
-        \/  /\  mux.serving # "-"
-            /\  UNCHANGED mux
+    \/  XCVRD_FAIL_RESPONSE(t, otherTor)
+    \/  /\  t.xcvrd = "-"
+        /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "check" ]
+        /\  \/  /\  mux.serving = "-"
+                /\  mux' = [ mux EXCEPT !.serving = t.name]
+            \/  /\  mux.serving # "-"
+                /\  UNCHANGED mux
+        /\  UNCHANGED otherTor
 
 ACK_CHECK(t, otherTor) ==
     (**********************************************)
@@ -135,29 +142,32 @@ ACK_CHECK(t, otherTor) ==
     (* Change muxState of tor to correct state.   *)
     (* Unblock mux.                               *)
     (**********************************************)
-    /\  UNCHANGED <<otherTor>>
-    /\  t.xcvrd = "check"
-    /\  mux.serving = t.name
-    /\  \/  /\  mux.active = t.name
-            /\  t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
-        \/  /\  mux.active = otherTor.name
-            /\  t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
-    /\  mux' = [ mux EXCEPT  !.serving = "-"]
+    \/  XCVRD_FAIL_RESPONSE(t, otherTor)
+    \/  /\  t.xcvrd = "check"
+        /\  mux.serving = t.name
+        /\  \/  /\  mux.active = t.name
+                /\  t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
+            \/  /\  mux.active = otherTor.name
+                /\  t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
+        /\  mux' = [ mux EXCEPT  !.serving = "-"]
+        /\  UNCHANGED otherTor
 
 
-TRIGGER_SWITCH(t, target) ==
+TRIGGER_SWITCH(t, target, otherTor) ==
     (*************************************************************)
     (* Beginning of switch between ToR and Mux.                  *)
     (* Transitions muxState to MuxWait and linkProber to LPWait. *)
     (* Target refers to ToR the Mux should point to.             *)
     (* Mux must not be blocked by other request                  *)
     (*************************************************************)
-    /\  t.xcvrd = "-"
-    /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait", !.target = target.name ]
-    /\  \/  /\  mux.serving = "-"
-            /\  mux' = [ mux EXCEPT !.serving = t.name]
-        \/  /\  mux.serving # "-"
-            /\  UNCHANGED mux
+    \/  XCVRD_FAIL_RESPONSE(t, otherTor)
+    \/  /\  t.xcvrd = "-"
+        /\  t' = [ t EXCEPT !.muxState = "MuxWait", !.xcvrd = "switch", !.linkProber = "LPWait", !.target = target.name ]
+        /\  \/  /\  mux.serving = "-"
+                /\  mux' = [ mux EXCEPT !.serving = t.name]
+            \/  /\  mux.serving # "-"
+                /\  UNCHANGED mux
+        /\ UNCHANGED otherTor
 
         
 ACK_SWITCH(t, otherTor) ==
@@ -166,14 +176,15 @@ ACK_SWITCH(t, otherTor) ==
     (* ToR assumes correct switching action and changes to target state. *)
     (* Unblock Mux.                                                      *)
     (*********************************************************************)
-    /\  UNCHANGED otherTor
-    /\  t.xcvrd = "switch"
-    /\  mux.serving = t.name
-    /\  \/  /\  t.target = t.name
-            /\  t' = [ t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-", !.target = "-"]
-        \/  /\  t.target = otherTor.name
-            /\  t' = [ t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-", !.target = "-"]
-    /\  mux' = [ mux EXCEPT !.next = t.target, !.serving = "-"]
+    \/  XCVRD_FAIL_RESPONSE(t, otherTor)
+    \/  /\  t.xcvrd = "switch"
+        /\  mux.serving = t.name
+        /\  \/  /\  t.target = t.name
+                /\  t' = [ t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-", !.target = "-"]
+            \/  /\  t.target = otherTor.name
+                /\  t' = [ t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-", !.target = "-"]
+        /\  mux' = [ mux EXCEPT !.next = t.target, !.serving = "-"]
+        /\  UNCHANGED otherTor
 
 EXEC_SWITCH ==
     (*****************************)
@@ -195,12 +206,12 @@ NACK(t, otherTor) ==
     (*************************************************************)
 
     \* This happens if the MUX cable has no power or is unplugged, etc.
+    \/  XCVRD_FAIL_RESPONSE(t, otherTor)
+    \/  /\  t.xcvrd \in {"check", "switch"}
+        /\  mux.serving # t.name
+        /\  t' =  [ t EXCEPT !.muxState = "MuxUnknown", !.xcvrd = "-", !.target = "-"]
+        /\  UNCHANGED <<mux, otherTor>>
 
-    /\  UNCHANGED otherTor
-    /\  t.xcvrd \in {"check", "switch"}
-    /\  mux.serving # t.name
-    /\  t' =  [ t EXCEPT !.muxState = "MuxUnknown", !.xcvrd = "-", !.target = "-"]
-    /\  UNCHANGED mux
 
 \* Mux-Side Actions
 MuxCommands ==
@@ -209,6 +220,8 @@ MuxCommands ==
     \/  ACK_CHECK(torB, torA)
     \/  ACK_SWITCH(torA, torB)
     \/  ACK_SWITCH(torB, torA)
+    \/  XCVRD_FAIL_RESPONSE(torA, torB)
+    \/  XCVRD_FAIL_RESPONSE(torB, torA)
 
 ----------------------------------------------------------------------------
 
@@ -223,29 +236,29 @@ StateTransitionHandler(t, otherTor) ==
             \*MuxActive row
         /\  \/  /\  t.muxState =  "MuxActive"
                 /\  t.linkProber \in {"LPStanby", "LPUnknown", "LPWait"}
-                /\  TRIGGER_CHECK(t)
+                /\  TRIGGER_CHECK(t, otherTor)
             \*MuxStandby row
             \/  /\  t.muxState = "MuxStandby"
                 /\  \/  /\  t.linkProber \in {"LPActive", "LPWait"}
-                        /\  TRIGGER_CHECK(t)
+                        /\  TRIGGER_CHECK(t, otherTor)
                     \/  /\  t.linkProber = "LPUnknown"
-                        /\  TRIGGER_SWITCH(t, t)
+                        /\  TRIGGER_SWITCH(t, t, otherTor)
             \*MuxUnknown row
             \/  /\  t.muxState = "MuxUnknown"
-                /\  TRIGGER_CHECK(t)
+                /\  TRIGGER_CHECK(t, otherTor)
     \*LinkDown Table
     \/  /\  t.linkState = "LinkDown"
             \*MuxActive row
         /\  \/  /\  t.muxState =  "MuxActive"
-                /\  TRIGGER_SWITCH(t, otherTor)
+                /\  TRIGGER_SWITCH(t, otherTor, otherTor)
             \*MuxStandby row
             \/  /\  t.muxState = "MuxStandby"
                 /\  t.linkProber \in {"LPUnknown", "LPWait"}
-                /\  TRIGGER_CHECK(t)
+                /\  TRIGGER_CHECK(t, otherTor)
             \*MuxUnknown row
             \/  /\  t.muxState = "MuxUnknown"
                 /\  t.linkProber \in {"LPUnknown", "LPWait"}
-                /\  TRIGGER_CHECK(t)
+                /\  TRIGGER_CHECK(t, otherTor)
 
 ---------------------------------------------------------------------------
 
@@ -256,11 +269,11 @@ MuxStateActive(t, otherTor) ==
     /\  \/  /\  t.linkState = "LinkUp"
             \* LinkUp MuxStateActive Row
             /\  \/  /\  t.linkProber \in {"LPStandby", "LPUnknown", "LPWait"}
-                    /\  TRIGGER_CHECK(t)
+                    /\  TRIGGER_CHECK(t, otherTor)
             /\  UNCHANGED <<otherTor>>
         \/  /\  t.linkState = "LinkDown"
             \* Switch to Standby
-            /\  TRIGGER_SWITCH(t, otherTor)
+            /\  TRIGGER_SWITCH(t, otherTor, otherTor)
             /\  UNCHANGED otherTor
 
 MuxStateStandby(t, otherTor) ==
@@ -269,16 +282,16 @@ MuxStateStandby(t, otherTor) ==
     /\  \/  /\  t.linkState = "LinkUp"
         \* LinkUp MuxStateStandby Row
             /\  \/  /\  t.linkProber \in {"LPActive", "LPWait"}
-                    /\  TRIGGER_CHECK(t)
+                    /\  TRIGGER_CHECK(t, otherTor)
                     /\  UNCHANGED <<otherTor>>
                 \/  /\  t.linkProber = "LPUnknown"
                     \* Switch to Active
-                    /\  TRIGGER_SWITCH(t, t)
+                    /\  TRIGGER_SWITCH(t, t, otherTor)
                     /\  UNCHANGED otherTor
         \/  /\  t.linkState = "LinkDown"
         \* LinkDown MuxStateStandby Row
             /\  t.linkProber \in {"LPUnknown, LPWait"}
-            /\  TRIGGER_CHECK(t)
+            /\  TRIGGER_CHECK(t, otherTor)
             /\  UNCHANGED <<mux, otherTor>>
 
 MuxStateUnknown(t, otherTor) ==
@@ -286,11 +299,11 @@ MuxStateUnknown(t, otherTor) ==
     /\  t.muxState = "MuxUnknown"
     /\  \/  /\  t.linkState = "LinkUp"
             \* LinkUp MuxStateStandby Row
-            /\  TRIGGER_CHECK(t)
+            /\  TRIGGER_CHECK(t, otherTor)
         \/  /\  t.linkState = "LinkDown"
         \* LinkDown MuxStateStandby Row
             /\  t.linkProber \in {"LPUnknown, LPWait"}
-            /\  TRIGGER_CHECK(t)
+            /\  TRIGGER_CHECK(t, otherTor)
     /\  UNCHANGED <<otherTor>>
 
 MuxStateWait(t, otherTor) ==
@@ -384,6 +397,8 @@ System ==
     \/  ACK_SWITCH(torB, torA)
     \/  NACK(torA, torB)
     \/  NACK(torB, torA)
+    \/  XCVRD_FAIL_RESPONSE(torA, torB)
+    \/  XCVRD_FAIL_RESPONSE(torB, torA)
     (****************************************************************************)
     (* XCVRD and LinkMgrd                                                       *)
     (****************************************************************************)
@@ -462,7 +477,7 @@ TimeoutHeartbeat(t, otherTor) ==
                     /\  t' = [ t EXCEPT !.linkProber = "LPUnknown"]
         \/  /\  t.muxState = "MuxStandby"
             \* Trigger Switch, set linkProber state
-            /\  TRIGGER_SWITCH(t, t)
+            /\  TRIGGER_SWITCH(t, t, otherTor)
         \/  /\  t.muxState = "MuxWait"
             /\  t' = [ t EXCEPT !.linkProber = "LPUnknown" ]
             /\  UNCHANGED mux
@@ -480,7 +495,8 @@ CrashXCVRD(t, otherTor) ==
     (* Set t.xcvrd to "crashed".                                   *)
     (* Makes any TRIGGER or ACK transition to MuxStateStandby on t *)
     (***************************************************************)
-    TRUE
+    /\  t' = [ t EXCEPT !.xcvrd = "crashed" ]
+    /\  UNCHANGED <<mux, otherTor>>
 
 \*TODO FailXCVRDWrite
 
@@ -500,27 +516,32 @@ FailMux ==
 
 
 
-Environment ==
-    \* \/  FailMux
-    \/  TimeoutHeartbeat(torA, torB)
-    \/  TimeoutHeartbeat(torB, torA)
-    \* \/  FailHeartbeat
-    \* \/  FailTor(torA, torB)
-    \* \/  FailTor(torB, torA)
-    \* \/  FailXCVRD(torA, torB)
-    \* \/  FailXCVRD(torB, torA)
-    \* \/  FailLinkState(torA, torB)
-    \* \/  FailLinkState(torB, torA)
-
-
 ----------------------------------------------------------------------------
 (******************)
 (* Reboot Actions *)
 (******************)
 
-
-
+RebootXCVRD(t, otherTor) == 
+    /\  t.xcvrd = "crashed"
+    /\  t' = [ t EXCEPT !.xcvrd = "-"]
+    /\  UNCHANGED <<mux, otherTor>>
 -----------------------------------------------------------------------------
+
+
+Environment ==
+    \* \/  FailMux
+    \* \/  TimeoutHeartbeat(torA, torB)
+    \* \/  TimeoutHeartbeat(torB, torA)
+    \* \/  FailHeartbeat
+    \* \/  FailTor(torA, torB)
+    \* \/  FailTor(torB, torA)
+    \/  CrashXCVRD(torA, torB)
+    \/  CrashXCVRD(torB, torA)
+    \* \/  FailLinkState(torA, torB)
+    \* \/  FailLinkState(torB, torA)
+    \/  RebootXCVRD(torA, torB)
+    \/  RebootXCVRD(torB, torA)
+
 
 Fairness ==
     /\  WF_vars(System)
@@ -568,6 +589,8 @@ Alias ==
     [
         torA |-> torA, torB |-> torB, mux |-> mux,
         active |-> { t.name : t \in ActiveToRs },
-        standby |-> { t.name : t \in StandbyToRs }
+        standby |-> { t.name : t \in StandbyToRs },
+        crash_A |-> ENABLED XCVRD_FAIL_RESPONSE(torA, torB),
+        crash_B |-> ENABLED XCVRD_FAIL_RESPONSE(torB, torA)
     ]
 =============================================================================
