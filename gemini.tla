@@ -39,12 +39,14 @@ MuxStates == {"MuxActive", "MuxStandby", "MuxWait", "MuxUnknown"}
 \* MUX_XCVRD_ (page 11)
 XCVRDStates == {"switch", "check", "-", "crashed"}
 
+Heartbeats == [sender:T, switchTarget:T \union {"-"}]
+
 ToR ==
     [ alive: BOOLEAN, 
       name: T,
       xcvrd: XCVRDStates,
       heartbeat: {"on", "off"},
-      heartbeatIn: SUBSET (T \union {"noResponse"}),
+      heartbeatIn: SUBSET (Heartbeats),
       linkProber: LPStates,
       linkState: LinkStates,
       muxState: MuxStates,
@@ -57,7 +59,7 @@ ActiveTor ==
       name: T, 
       xcvrd: XCVRDStates,
       heartbeat: {"on"},
-      heartbeatIn: SUBSET (T \union {"noResponse"}),
+      heartbeatIn: SUBSET (Heartbeats),
       linkProber: {"LPActive", "LPUnknown"}, 
       linkState: {"LinkUp"},
       muxState: {"MuxActive", "MuxWait"},
@@ -69,7 +71,7 @@ StandbyTor ==
       name: T, 
       xcvrd: XCVRDStates,
       heartbeat: {"on"},
-      heartbeatIn: SUBSET (T \union {"noResponse"}),
+      heartbeatIn: SUBSET (Heartbeats),
       linkProber: {"LPStandby", "LPUnknown"}, 
       linkState: {"LinkUp"},
       muxState: {"MuxStandby", "MuxWait"},
@@ -82,7 +84,7 @@ StandbyToRs ==
     { t \in {torA, torB} : t \in StandbyTor }
 
 AliveToRs ==
-    { t \in {torA, torB} : t.alive }
+    { t \in {torA, torB} : t.alive /\ t.xcvrd # "crashed" }
 
 TypeOK == 
     /\  torA \in ToR
@@ -93,14 +95,14 @@ Init ==
     LET InitialTor(name) == 
         [ alive           |-> TRUE,
           name            |-> name,
-          xcvrd           |-> "check",
+          xcvrd           |-> "-",
           heartbeat       |-> "on",
           heartbeatIn     |-> {},
           linkProber      |-> "LPWait",
           linkState       |-> "LinkDown",
           muxState        |-> "MuxWait",
           target          |-> "-" ]
-    IN  /\  mux \in {f \in [ active: T, next: T, serving: T \union {"-"} ]: f.active = f.next /\  f.serving # "-"}
+    IN  /\  mux \in {f \in [ active: T, next: T, serving: T \union {"-"} ]: f.active = f.next /\ f.serving = "-"}
         /\  torA = InitialTor("torA")
         /\  torB = InitialTor("torB")
 
@@ -142,15 +144,15 @@ ACK_CHECK(t, otherTor) ==
     (* Change muxState of tor to correct state.   *)
     (* Unblock mux.                               *)
     (**********************************************)
-    \/  XCVRD_FAIL_RESPONSE(t, otherTor)
-    \/  /\  t.xcvrd = "check"
-        /\  mux.serving = t.name
-        /\  \/  /\  mux.active = t.name
-                /\  t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
-            \/  /\  mux.active = otherTor.name
-                /\  t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
-        /\  mux' = [ mux EXCEPT  !.serving = "-"]
-        /\  UNCHANGED otherTor
+    /\  \/  XCVRD_FAIL_RESPONSE(t, otherTor)
+        \/  /\  t.xcvrd = "check"
+            /\  mux.serving = t.name
+            /\  \/  /\  mux.active = t.name
+                    /\  t' = [t EXCEPT !.muxState = "MuxActive", !.heartbeat = "on", !.xcvrd = "-"]
+                \/  /\  mux.active = otherTor.name
+                    /\  t' = [t EXCEPT !.muxState = "MuxStandby", !.heartbeat = "on", !.xcvrd = "-"]
+    /\  mux' = [ mux EXCEPT  !.serving = "-"]
+    /\  UNCHANGED otherTor
 
 
 TRIGGER_SWITCH(t, target, otherTor) ==
@@ -176,15 +178,15 @@ ACK_SWITCH(t, otherTor) ==
     (* ToR assumes correct switching action and changes to target state. *)
     (* Unblock Mux.                                                      *)
     (*********************************************************************)
-    \/  XCVRD_FAIL_RESPONSE(t, otherTor)
-    \/  /\  t.xcvrd = "switch"
-        /\  mux.serving = t.name
-        /\  \/  /\  t.target = t.name
-                /\  t' = [ t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-", !.target = "-"]
-            \/  /\  t.target = otherTor.name
-                /\  t' = [ t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-", !.target = "-"]
-        /\  mux' = [ mux EXCEPT !.next = t.target, !.serving = "-"]
-        /\  UNCHANGED otherTor
+    /\  \/  XCVRD_FAIL_RESPONSE(t, otherTor)
+        \/  /\  t.xcvrd = "switch"
+            /\  mux.serving = t.name
+            /\  \/  /\  t.target = t.name
+                    /\  t' = [ t EXCEPT !.muxState = "MuxActive", !.xcvrd = "-", !.target = "-"]
+                \/  /\  t.target = otherTor.name
+                    /\  t' = [ t EXCEPT !.muxState = "MuxStandby", !.xcvrd = "-", !.target = "-"]
+    /\  mux' = [ mux EXCEPT !.next = t.target, !.serving = "-"]
+    /\  UNCHANGED otherTor
 
 EXEC_SWITCH ==
     (*****************************)
@@ -268,7 +270,7 @@ MuxStateActive(t, otherTor) ==
     /\  t.muxState = "MuxActive"
     /\  \/  /\  t.linkState = "LinkUp"
             \* LinkUp MuxStateActive Row
-            /\  \/  /\  t.linkProber \in {"LPStandby", "LPUnknown", "LPWait"}
+            /\  \/  /\  t.linkProber \in {"LPStandby", "LPUnknown"}\*, "LPWait"}
                     /\  TRIGGER_CHECK(t, otherTor)
             /\  UNCHANGED <<otherTor>>
         \/  /\  t.linkState = "LinkDown"
@@ -281,7 +283,7 @@ MuxStateStandby(t, otherTor) ==
     /\  t.muxState = "MuxStandby"
     /\  \/  /\  t.linkState = "LinkUp"
         \* LinkUp MuxStateStandby Row
-            /\  \/  /\  t.linkProber \in {"LPActive", "LPWait"}
+            /\  \/  /\  t.linkProber \in {"LPActive"}\*, "LPWait"}
                     /\  TRIGGER_CHECK(t, otherTor)
                     /\  UNCHANGED <<otherTor>>
                 \/  /\  t.linkProber = "LPUnknown"
@@ -290,9 +292,9 @@ MuxStateStandby(t, otherTor) ==
                     /\  UNCHANGED otherTor
         \/  /\  t.linkState = "LinkDown"
         \* LinkDown MuxStateStandby Row
-            /\  t.linkProber \in {"LPUnknown, LPWait"}
+            /\  t.linkProber \in {"LPUnknown"}\*, "LPWait"}
             /\  TRIGGER_CHECK(t, otherTor)
-            /\  UNCHANGED <<mux, otherTor>>
+            /\  UNCHANGED <<otherTor>>
 
 MuxStateUnknown(t, otherTor) ==
     /\  t.alive
@@ -302,15 +304,16 @@ MuxStateUnknown(t, otherTor) ==
             /\  TRIGGER_CHECK(t, otherTor)
         \/  /\  t.linkState = "LinkDown"
         \* LinkDown MuxStateStandby Row
-            /\  t.linkProber \in {"LPUnknown, LPWait"}
+            /\  t.linkProber \in {"LPUnknown"}\*, "LPWait"}
             /\  TRIGGER_CHECK(t, otherTor)
     /\  UNCHANGED <<otherTor>>
 
 MuxStateWait(t, otherTor) ==
     /\  t.alive
     /\  t.muxState = "MuxWait"  
-    \* If Mux is busy, go to Unknown
-    /\  UNCHANGED <<t, otherTor, mux>>
+    /\  t.xcvrd = "-"
+    /\  t' = [ t EXCEPT  !.muxState = "MuxUnknown"]
+    /\  UNCHANGED <<otherTor, mux>>
 
 
 -----------------------------------------------------------------------------
@@ -318,7 +321,7 @@ MuxStateWait(t, otherTor) ==
 \* State machine page 09 of the Powerpoint presentation as of 08/25/2022
 \* https://microsoft-my.sharepoint.com/:u:/p/zhangjing/EclAzBSCq_5KuwgbbpyUlMQB1RS_X9nibOrM1PjT8wM_uw?e=eBtJKl
 
-SendHeartbeat(t) ==
+SendHeartbeat(t, otherTor) ==
     /\  UNCHANGED <<mux>>
     /\  t.alive
     /\  t.linkState = "LinkUp"
@@ -328,15 +331,19 @@ SendHeartbeat(t) ==
     (* to both ToR's                                                            *)
     (****************************************************************************)
     /\  mux.active = t.name  \* The MUX will drop traffic from ToR if it is not pointing to it
-    /\  torA' = [ torA EXCEPT !.heartbeatIn = @ \union {t.name} ]
-    /\  torB' = [ torB EXCEPT !.heartbeatIn = @ \union {t.name} ]
+    /\  \/  /\  t.xcvrd # "crashed" \* Normal heartbeat behavior
+            /\  torA' = [ torA EXCEPT !.heartbeatIn = @ \union {[sender |-> t.name, switchTarget |-> "-"]} ]
+            /\  torB' = [ torB EXCEPT !.heartbeatIn = @ \union {[sender |-> t.name, switchTarget |-> "-"]} ]
+        \/  /\  t.xcvrd = "crashed" \* When XCVRD crashes on active, LinkProber will send a heartbeat telling peer to take over
+            /\  torA' = [ torA EXCEPT !.heartbeatIn = @ \union {[sender |-> t.name, switchTarget |-> otherTor.name]} ]
+            /\  torB' = [ torB EXCEPT !.heartbeatIn = @ \union {[sender |-> t.name, switchTarget |-> otherTor.name]} ]
 
 ReadHeartbeat(t, otherTor) ==
     /\  UNCHANGED <<otherTor>>
     /\  t.alive
     /\  t.linkState = "LinkUp"
     /\  \E heartbeat \in t.heartbeatIn:
-        /\  \/  /\  t.name = heartbeat
+        /\  \/  /\  t.name = heartbeat.sender
                 \* Incoming heartbeat is self. LPActive
                 /\  \/  /\  t.muxState \in {"MuxStandby", "MuxUnknown"}
                         \* Trigger Check, set linkProber state and remove heartbeat
@@ -353,7 +360,7 @@ ReadHeartbeat(t, otherTor) ==
                     \/  /\  t.muxState \notin {"MuxStandby", "MuxUnknown"}
                         /\  t' = [ t EXCEPT !.linkProber = "LPActive", !.heartbeatIn = @ \ {heartbeat} ]
                         /\  UNCHANGED mux
-            \/  /\  otherTor.name = heartbeat
+            \/  /\  otherTor.name = heartbeat.sender
                 /\  \/  /\  t.muxState \in {"MuxActive", "MuxUnknown"}
                 \* Trigger Check, set linkProber state and remove heartbeat
                         /\  \/  /\  t.xcvrd = "-"   \* If nothing pending on xcvrd trigger check
@@ -366,8 +373,11 @@ ReadHeartbeat(t, otherTor) ==
                                 /\  t' = [ t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat} ]
                                 /\  UNCHANGED mux
                     \/  /\  t.muxState \notin {"MuxActive", "MuxUnknown"}
-                        /\  t' = [ t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat} ]
-                        /\  UNCHANGED mux
+                        /\  \/  /\  heartbeat.switchTarget # "-"
+                                /\  TRIGGER_SWITCH(t, t, otherTor)
+                            \/  /\  heartbeat.switchTarget = "-"
+                                /\  t' = [ t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat} ]
+                                /\  UNCHANGED mux
                     
 
 ----------------------------------------------------------------------------
@@ -413,8 +423,8 @@ System ==
     (****************************************************************************)
     (* ToR periodically send heartbeats via the mux to the server.              *)
     (****************************************************************************)
-    \/  SendHeartbeat(torA)
-    \/  SendHeartbeat(torB)
+    \/  SendHeartbeat(torA, torB)
+    \/  SendHeartbeat(torB, torA)
     (****************************************************************************)
     (* ToR receives heartbeat and triggers appropriate transition in LinkProber *)
     (****************************************************************************)
@@ -548,12 +558,12 @@ Fairness ==
     /\  WF_vars(MuxCommands)
     /\  SF_vars(NACK(torA, torB))
     /\  SF_vars(NACK(torB, torA))
-    /\  WF_vars(SendHeartbeat(torA))
-    /\  WF_vars(SendHeartbeat(torB))
+    /\  WF_vars(SendHeartbeat(torA, torB))
+    /\  WF_vars(SendHeartbeat(torB, torA))
     /\  WF_vars(LinkState(torA, torB))
     /\  WF_vars(LinkState(torB, torA))
-    /\  WF_vars(MuxState(torA, torB))
-    /\  WF_vars(MuxState(torB, torA))
+    \* /\  WF_vars(MuxState(torA, torB))
+    \* /\  WF_vars(MuxState(torB, torA))
     /\  WF_vars(ReadHeartbeat(torA, torB))
     /\  WF_vars(ReadHeartbeat(torB, torA))
 
