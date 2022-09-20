@@ -474,7 +474,7 @@ FailHeartbeat ==
                 /\  UNCHANGED torA
 
 TimeoutHeartbeat(t, otherTor) ==
-    /\  UNCHANGED <<otherTor>>
+    /\  UNCHANGED otherTor
     /\  \/  /\  t.muxState \in {"MuxActive", "MuxUnknown"}
             \* Trigger Check, set linkProber state
             /\  \/  /\  t.xcvrd = "-"   \* If nothing pending on xcvrd trigger check
@@ -485,6 +485,7 @@ TimeoutHeartbeat(t, otherTor) ==
                             /\  UNCHANGED mux
                 \/  /\  t.xcvrd # "-"   \* If something pending on xcvrd only change linkProber
                     /\  t' = [ t EXCEPT !.linkProber = "LPUnknown"]
+                    /\  UNCHANGED mux
         \/  /\  t.muxState = "MuxStandby"
             \* Trigger Switch, set linkProber state
             /\  TRIGGER_SWITCH(t, t, otherTor)
