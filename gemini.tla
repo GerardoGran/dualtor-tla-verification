@@ -562,8 +562,8 @@ Fairness ==
     /\  WF_vars(SendHeartbeat(torB, torA))
     /\  WF_vars(LinkState(torA, torB))
     /\  WF_vars(LinkState(torB, torA))
-    \* /\  WF_vars(MuxState(torA, torB))
-    \* /\  WF_vars(MuxState(torB, torA))
+    /\  WF_vars(MuxState(torA, torB))
+    /\  WF_vars(MuxState(torB, torA))
     /\  WF_vars(ReadHeartbeat(torA, torB))
     /\  WF_vars(ReadHeartbeat(torB, torA))
 
