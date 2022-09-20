@@ -270,7 +270,7 @@ MuxStateActive(t, otherTor) ==
     /\  t.muxState = "MuxActive"
     /\  \/  /\  t.linkState = "LinkUp"
             \* LinkUp MuxStateActive Row
-            /\  \/  /\  t.linkProber \in {"LPStandby", "LPUnknown"}\*, "LPWait"}
+            /\  \/  /\  t.linkProber \in {"LPStandby", "LPUnknown", "LPWait"}
                     /\  TRIGGER_CHECK(t, otherTor)
             /\  UNCHANGED <<otherTor>>
         \/  /\  t.linkState = "LinkDown"
@@ -283,7 +283,7 @@ MuxStateStandby(t, otherTor) ==
     /\  t.muxState = "MuxStandby"
     /\  \/  /\  t.linkState = "LinkUp"
         \* LinkUp MuxStateStandby Row
-            /\  \/  /\  t.linkProber \in {"LPActive"}\*, "LPWait"}
+            /\  \/  /\  t.linkProber \in {"LPActive", "LPWait"}
                     /\  TRIGGER_CHECK(t, otherTor)
                     /\  UNCHANGED <<otherTor>>
                 \/  /\  t.linkProber = "LPUnknown"
@@ -292,7 +292,7 @@ MuxStateStandby(t, otherTor) ==
                     /\  UNCHANGED otherTor
         \/  /\  t.linkState = "LinkDown"
         \* LinkDown MuxStateStandby Row
-            /\  t.linkProber \in {"LPUnknown"}\*, "LPWait"}
+            /\  t.linkProber \in {"LPUnknown", "LPWait"}
             /\  TRIGGER_CHECK(t, otherTor)
             /\  UNCHANGED <<otherTor>>
 
@@ -304,7 +304,7 @@ MuxStateUnknown(t, otherTor) ==
             /\  TRIGGER_CHECK(t, otherTor)
         \/  /\  t.linkState = "LinkDown"
         \* LinkDown MuxStateStandby Row
-            /\  t.linkProber \in {"LPUnknown"}\*, "LPWait"}
+            /\  t.linkProber \in {"LPUnknown", "LPWait"}
             /\  TRIGGER_CHECK(t, otherTor)
     /\  UNCHANGED <<otherTor>>
 
