@@ -1,4 +1,4 @@
----- MODULE gemini_anim ----
+---- MODULE dualtor_anim ----
 EXTENDS TLC, TLCExt, SVG, IOUtils, Sequences, Integers, gemini
 
 Arial == [font |-> "Arial"]
