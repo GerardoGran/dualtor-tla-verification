@@ -6,12 +6,11 @@
 (* scenarios in the algorithm by exploring reachable states simulating                        *)
 (* transitions in the submodules' state machines.                                             *)
 (**********************************************************************************************)
-EXTENDS FiniteSets
 
 VARIABLES 
     torA,
     torB,
-    mux       \* Which ToR the MUX cable itself is pointing to
+    mux
     (*******************************************************************************)
     (* LinkProber knows wether the TOR it's hosted in should be active or standby  *)
     (* by listening to the active ToR's heartbeat that is sent to both ToR's. It   *)
@@ -563,18 +562,18 @@ RebootXCVRD(t, otherTor) ==
 
 
 Environment ==
-    \* \/  FailMux
+    \/  FailMux
     \/  TimeoutHeartbeat(torA, torB)
     \/  TimeoutHeartbeat(torB, torA)
-    \* \/  FailHeartbeat
+    \/  FailHeartbeat
     \/  FailTor(torA, torB)
     \/  FailTor(torB, torA)
-    \* \/  CrashXCVRD(torA, torB)
-    \* \/  CrashXCVRD(torB, torA)
-    \* \/  FailLinkState(torA, torB)
-    \* \/  FailLinkState(torB, torA)
-    \* \/  RebootXCVRD(torA, torB)
-    \* \/  RebootXCVRD(torB, torA)
+    \/  CrashXCVRD(torA, torB)
+    \/  CrashXCVRD(torB, torA)
+    \/  FailLinkState(torA, torB)
+    \/  FailLinkState(torB, torA)
+    \/  RebootXCVRD(torA, torB)
+    \/  RebootXCVRD(torB, torA)
 
 
 Fairness ==

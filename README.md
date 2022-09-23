@@ -3,10 +3,10 @@
 This is the repository for the TLA+ Specification for the DualTor Standby/Active Protocol in use in SONiC Top-of-Rack switches (ToR). The purpose of the specification is to verify the correctness of the proposed solution by modeling the entire system with its possible actions and failures to ensure that the system will stabilize itself and do the required task.
 
 # The DualTor Standby/Active Protocol
-The purpose of the DualTor Standby/Active protocol is to increase reliability in top-of-rack switches by introducing redundancy in the form of a second ToR. In the proposed design, one ToR will be designated as "Active" and the other must be "Standby". This "Active" or "Standby" state is defined by a combination of [other states](#the-submodules) that will be explained later. The Active ToR will operate normally, forwarding southbound (T0 to Server) and northbound (Server to T0) traffic. The Standby ToR will tunnel all southbound traffic to its peer ToR and drop all northbound traffic (except for ICMP packets it requires for the [LinkProber Module](#linkprober-module)).
+The purpose of the DualTor Standby/Active protocol is to increase reliability in top-of-rack switches by introducing redundancy in the form of a second ToR. In the proposed design, one ToR will be designated as "Active" and the other must be "Standby". This "Active" or "Standby" state is defined by a combination of [other states](#the-submodules) that will be explained later. The Active ToR will operate normally, forwarding southbound (T1 to Server) and northbound (Server to T1) traffic. The Standby ToR will tunnel all southbound traffic to its peer ToR and drop all northbound traffic (except for ICMP packets it requires for the [LinkProber Module](#linkprober-module)).
 Both ToRs are connected to the server with a Y-split MUX cable. The MUX cable is a powered by the server, can only listen to southbound traffic in one direction, and has a microcontroller unit (MCU) that controls the direction the MUX is listening to. The MUX will duplicate all northbound traffic to both ToR's regardless of which way the MUX is pointing.
 
-![Basic Architecture Diagram](figures/Dualtor%20Architecture%20Gif.gif)
+![Basic Architecture Diagram](figures/Dualtor%20Animation.gif)
 
 ToR's are connected by a MUX cable to every server in the rack, and each of these connections runs its own instance of the protocol independent from each other. Since the instances are independent, in the specification we only model the connection of two ToR's to a single server.
 
@@ -50,3 +50,9 @@ All of the modules report their states to a redids DB. LinkManager reads that DB
 LinkManager will trigger two types of events, LINKMANAGER_CHECK and LINKMANAGER_SWITCH.
 **LINKMANAGER_CHECK** will trigger when there is an inconsistency between the LinkProber and the MuxState. This will use XCVRD to request the current direction of the MUX and transition MuxState into MuxWait until XCVRD receives a response, crashes, or timesout.
 **LINKMANAGER_SWITCH** will ask to become Standby when MuxState is Active and Link goes down, and it will ask to become Active when MuxState is Standby and LinkProber is Unknown. XCVRD will tell the MUX to change to a target ToR which could be self or peer and transition MuxState into MuxWait. When XCVRD receives a response, this does not mean that the switch has been executed in the MUX, only that it **will** be executed.
+
+# Why do Formal Verification?
+
+When you have a protocol based on a distributed concurrent system with multiple state combinations, thinking of possible edge cases and failure scenarios becomes too complex for one to do without a tool's assistance. **TLA+** allows us to model the entire system without worrying about implementation details to verify the correctness of the underlying algorithm's design or in our case, find new undiscovered ways in which the system could fail.
+
+In TLA+ we do this by writing a *specification*, a written description of what a system is **supposed** to do. This is done by modeling the system's possible actions using mathematics to define actions that a system can take. These actions will define all possible behaviors in the system where a behavior is a sequence of states. For detailed information on TLA+ and resources see [Leslie Lamport's Website](http://lamport.azurewebsites.net/tla/tla.html) and his book [Specifying Systems](http://lamport.azurewebsites.net/tla/book-21-07-04.pdf).
