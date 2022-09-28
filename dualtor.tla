@@ -92,18 +92,18 @@ TypeOK ==
 
 Init ==
     LET InitialTor(name) == 
-        [ alive           |-> TRUE,
-          name            |-> name,
-          xcvrd           |-> "-",
-          heartbeat       |-> "on",
-          heartbeatIn     |-> {},
-          linkProber      |-> "LPWait",
-          linkState       |-> "LinkDown",
-          muxState        |-> "MuxWait",
-          target          |-> "-" ]
+        [ alive           : {TRUE},
+          name            : {name},
+          xcvrd           : {"-"},
+          heartbeat       : {"on"},
+          heartbeatIn     : {{}},
+          linkProber      : {"LPWait"},
+          linkState       : {"LinkDown","LinkUp"},
+          muxState        : {"MuxWait"},
+          target          : {"-"} ]
     IN  /\  mux \in {f \in [ active: T, next: T, serving: T \union {"-"} ]: f.active = f.next /\ f.serving = "-"}
-        /\  torA = InitialTor("torA")
-        /\  torB = InitialTor("torB")
+        /\  torA \in InitialTor("torA")
+        /\  torB \in InitialTor("torB")
 
 -----------------------------------------------------------------------------
 \* State machine and transition table pages 12 & 13 of the Powerpoint presentation as of 08/25/2022
@@ -618,6 +618,18 @@ THEOREM Spec =>
     /\  RepeatedlyOneActive
 
 -----------------------------------------------------------------------------
+
+OnlyOneActive ==
+    \* There is only one active tor at any given time.
+    \* Copilot synthesized this property except for the box and the ActiveTors instead of ActiveToRs.
+    [](\A t1, t2 \in ActiveToRs: t1 = t2)
+
+WihtoutFailureSpecAndUp ==
+    /\ WithoutFailureSpec
+    /\ torA.linkState = "LinkUp"
+    /\ torB.linkState = "LinkUp"
+
+THEOREM WihtoutFailureSpecAndUp => OnlyOneActive
 
 Alias ==
     [
