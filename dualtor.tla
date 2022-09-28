@@ -545,7 +545,7 @@ FailMux ==
     (* Failure Action for inconsistent MUX States with MuxCable State *)
     (******************************************************************)
     /\  UNCHANGED <<torA, torB>>
-    /\  mux' \in [ active: T, next: T ]
+    /\  mux' \in [ active: T, next: T, serving: {"-"} ]
 
 
 
