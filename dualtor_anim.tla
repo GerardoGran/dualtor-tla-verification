@@ -27,18 +27,20 @@ Labels == Group(<<Text(LegendBasePos.x, LegendBasePos.y, "Circle: Active, Arrow:
 ToRs ==
     LET ToRR(t, offset) ==         
             LET coord == [x |-> offset * 100, y |-> 100]
-                id == Text(coord.x + ArrowPosOffset + 2, coord.y + ArrowPosOffset + 7, ToString(t.name), 
+                id == Text(coord.x + ArrowPosOffset + 2, coord.y + ArrowPosOffset, ToString(t.name), 
                                                 Arial @@ [fill |-> "black"])
-                muxState == Text(coord.x + ArrowPosOffset - 20, coord.y + ArrowPosOffset + 20, "MS: " \o ToString(t.muxState), 
+                muxState == Text(coord.x + ArrowPosOffset - 20, coord.y + ArrowPosOffset + 13, "MS: " \o ToString(t.muxState), 
                                                 Arial @@ [fill |-> "black"])
-                linkProber == Text(coord.x + ArrowPosOffset - 20, coord.y + ArrowPosOffset + 33, "LP: " \o ToString(t.linkProber), 
+                linkProber == Text(coord.x + ArrowPosOffset - 20, coord.y + ArrowPosOffset + 26, "LP: " \o ToString(t.linkProber), 
+                                                Arial @@ [fill |-> "black"])
+                xcvrd == Text(coord.x + ArrowPosOffset - 20, coord.y + ArrowPosOffset + 39, "XCVRD: " \o ToString(t.xcvrd), 
                                                 Arial @@ [fill |-> "black"])
                 node == Rect(coord.x + 15, coord.y, NodeDimension, NodeDimension,
                                             \* round (rx=15) if node is active.
                                             [rx |-> IF t \in ActiveTor THEN "30" ELSE "0",
                                             stroke |-> "black",
                                             fill |-> "white"])
-            IN Group(<<node, id, muxState, linkProber>>, ("transform" :> "translate(0 125)"))
+            IN Group(<<node, id, muxState, linkProber, xcvrd>>, ("transform" :> "translate(0 125)"))
     IN Group(<<ToRR(torA, 1), ToRR(torB, 4)>>, <<>>)
 
 Mux ==
@@ -130,4 +132,4 @@ AnimAlias == Alias @@ [
 
 
 
-convert -delay 100 -density 200 *.svg gemini.pdf
+rm *.svg *.pdf ; tlc dualtor_anim -note ; convert -delay 100 -density 200 *.svg dualtor.pdf
