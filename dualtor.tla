@@ -372,7 +372,7 @@ ReadHeartbeat(t, otherTor) ==
                                 \/  /\  t.xcvrd # "-"   \* If something pending on xcvrd only change linkProber and remove heartbeat
                                     /\  t' = [ t EXCEPT !.linkProber = "LPStandby", !.heartbeatIn = @ \ {heartbeat} ]
                                     /\  UNCHANGED mux
-                        \/  /\  t.muxState \notin {"MuxActive", "MuxUnknown"}
+                        \/  /\  t.muxState \in {"MuxWait", "MuxStandby"}
                             /\  \/  /\  heartbeat.switchTarget # "-"
                                     /\  TRIGGER_SWITCH(t, t, otherTor)
                                 \/  /\  heartbeat.switchTarget = "-"
@@ -562,16 +562,16 @@ RebootXCVRD(t, otherTor) ==
 
 
 Environment ==
-    \/  FailMux
-    \/  TimeoutHeartbeat(torA, torB)
-    \/  TimeoutHeartbeat(torB, torA)
-    \/  FailHeartbeat
-    \/  FailTor(torA, torB)
-    \/  FailTor(torB, torA)
+    \* \/  FailMux
+    \* \/  TimeoutHeartbeat(torA, torB)
+    \* \/  TimeoutHeartbeat(torB, torA)
+    \* \/  FailHeartbeat
+    \* \/  FailTor(torA, torB)
+    \* \/  FailTor(torB, torA)
+    \* \/  FailLinkState(torA, torB)
+    \* \/  FailLinkState(torB, torA)
     \/  CrashXCVRD(torA, torB)
     \/  CrashXCVRD(torB, torA)
-    \/  FailLinkState(torA, torB)
-    \/  FailLinkState(torB, torA)
     \/  RebootXCVRD(torA, torB)
     \/  RebootXCVRD(torB, torA)
 
