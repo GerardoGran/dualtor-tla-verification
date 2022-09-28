@@ -629,7 +629,14 @@ WihtoutFailureSpecAndUp ==
     /\ torA.linkState = "LinkUp"
     /\ torB.linkState = "LinkUp"
 
-THEOREM WihtoutFailureSpecAndUp => OnlyOneActive
+\* Does *not* hold!
+\* THEOREM WihtoutFailureSpecAndUp => OnlyOneActive
+
+EventuallyOnlyOneActive ==
+    <>OnlyOneActive
+
+\* Does *not* hold!
+\* THEOREM WihtoutFailureSpecAndUp => EventuallyOnlyOneActive
 
 Alias ==
     [
