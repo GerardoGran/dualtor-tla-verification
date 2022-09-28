@@ -624,7 +624,9 @@ Alias ==
         torA |-> torA, torB |-> torB, mux |-> mux,
         active |-> { t.name : t \in ActiveToRs },
         standby |-> { t.name : t \in StandbyToRs },
-        Timeout_A |-> ENABLED TimeoutHeartbeat(torA, torB),
-        Timeout_B |-> ENABLED TimeoutHeartbeat(torB, torA)
+        \* Timeout_A |-> ENABLED TimeoutHeartbeat(torA, torB),
+        \* Timeout_B |-> ENABLED TimeoutHeartbeat(torB, torA),
+        ReadHeartbeat_A |-> ENABLED ReadHeartbeat(torA, torB),
+        ReadHeartbeat_B |-> ENABLED ReadHeartbeat(torB, torA)
     ]
 =============================================================================
