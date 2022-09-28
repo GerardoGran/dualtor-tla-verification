@@ -73,14 +73,18 @@ Past ==
     ELSE Trace[1]
 
 CableColorA ==
-    CASE Past.torA.heartbeatIn # torA.heartbeatIn /\ torA.name \in torA.heartbeatIn -> "red"
+    IF TLCGet("level") = 1 THEN "black" ELSE
+    CASE Past.torA.heartbeatIn # torA.heartbeatIn /\ \E h \in torA.heartbeatIn: h.sender = torA.name -> "red"
       [] Past.torA.linkProber # torA.linkProber -> "orange"
-      [] OTHER -> "black"
+      [] OTHER -> 
+            "black"
 
 CableColorB ==
-    CASE Past.torB.heartbeatIn # torB.heartbeatIn /\ torB.name \in torB.heartbeatIn-> "red"
+    IF TLCGet("level") = 1 THEN "black" ELSE
+    CASE Past.torB.heartbeatIn # torB.heartbeatIn /\ \E h \in torB.heartbeatIn: h.sender = torB.name -> "red"
       [] Past.torB.linkProber # torB.linkProber -> "orange"
-      [] OTHER -> "black"
+      [] OTHER -> 
+            "black"
 
 Cables ==
     LET 
