@@ -5,20 +5,26 @@ library(ggplot2)
 
 args <- commandArgs(trailingOnly = TRUE)
 
-data <- read.csv(header = TRUE, sep = ",", file = args[1])
-
-summary = summarise(data,
-                    One = mean(one),
-                    Both = mean(both),
-                    None = mean(none),
-                    torA = mean(torA),
-                    torB = mean(torB)
-)
-
-df <- pivot_longer(summary, cols=1:3, names_to = "Active", values_to = "States")
-
 svg(gsub(".csv$", ".svg", args[1]))
 
-ggplot(df, aes(fill=Active, y=States, x="")) + 
-  geom_bar(position="stack", stat="identity") +
-  xlab(paste("Samples: ", nrow(data)))
+
+data <- read.csv(header = TRUE, sep = "#", file = "dualtor_stats.csv")
+
+summary = summarise(group_by(data,flags),
+                    One = round(mean(one), 0),
+                    Both = round(mean(both, 0)),
+                    None = round(mean(none, 0)),
+                    Failures = round(mean(failures, 0))
+)
+
+df <- pivot_longer(summary, cols=2:4, names_to = "Active", values_to = "States")
+df$Active<-replace(df$Active, df$Active=="None", 0)
+df$Active<-replace(df$Active, df$Active=="One", 1)
+df$Active<-replace(df$Active, df$Active=="Both", 2)
+
+ggplot(NULL, aes(y=States, x=flags)) + 
+  geom_bar(data = df, aes(fill=Active), position="dodge", stat="identity") +
+  geom_bar(data = df, aes(y=Failures, x=flags), position="dodge", stat="identity", alpha = 0.1) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  labs(title = paste("Samples: ", nrow(data))) +
+  xlab("Failures")
