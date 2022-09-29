@@ -623,19 +623,19 @@ OnlyOneActive ==
     \* Copilot synthesized this property except for the box and the ActiveTors instead of ActiveToRs.
     [](\A t1, t2 \in ActiveToRs: t1 = t2)
 
-WihtoutFailureSpecAndUp ==
+WithoutFailureSpecAndUp ==
     /\ WithoutFailureSpec
     /\ torA.linkState = "LinkUp"
     /\ torB.linkState = "LinkUp"
 
 \* Does *not* hold!
-\* THEOREM WihtoutFailureSpecAndUp => OnlyOneActive
+\* THEOREM WithoutFailureSpecAndUp => OnlyOneActive
 
 EventuallyOnlyOneActive ==
     <>OnlyOneActive
 
 \* Does *not* hold!
-\* THEOREM WihtoutFailureSpecAndUp => EventuallyOnlyOneActive
+\* THEOREM WithoutFailureSpecAndUp => EventuallyOnlyOneActive
 
 Alias ==
     [
