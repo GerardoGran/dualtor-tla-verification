@@ -1,15 +1,16 @@
 ----------------------------- MODULE dualtor_stats ----------------------------
-EXTENDS CSV, TLC, TLCExt, IOUtils, FiniteSets, Sequences, Integers, dualtor
+EXTENDS CSV, TLC, TLCExt, IOUtils, FiniteSetsExt, Sequences, Integers, dualtor
 
 Flags ==
     {{"TH"}, {"FL"}, {"FT"}, {"CX"}, {"FM"}, {"FH"}}
 
-VARIABLE flag, failures
-simVars == <<flag, failures>>
+VARIABLE flag, failures, active
+simVars == <<flag, failures, active>>
 
 SimInit ==
     /\ Init
     /\ failures = 0
+    /\ active = <<0, 0, 0>>
     \* Single feature flags.
     /\ flag \in {{}} \union Flags
     \* All subsets of feature flags.
@@ -44,6 +45,7 @@ SimNext ==
     /\ IF flag # {} /\ RandomElement(1..100) = 1
        THEN SimEnvironment
        ELSE System /\ UNCHANGED failures
+    /\ active' = [ active EXCEPT ![Quantify({torA', torB'}, LAMBDA t: t \in ActiveTor) + 1] = @ + 1 ]
 
 SimSpec ==
     /\ SimInit
@@ -62,33 +64,16 @@ ASSUME
 CSVFile ==
     "dualtor_stats.csv"
 
-Reset ==
-    /\ TLCSet(1, 0)
-    /\ TLCSet(2, 0)
-    /\ TLCSet(3, 0)
-    /\ TLCSet(4, 0)
-    /\ TLCSet(5, 0)
-
 ASSUME
     \* Initialize the CSV file with a header.
-    /\ CSVRecords(CSVFile) = 0 => CSVWrite("torA#torB#one#both#none#states#flags#failures", <<>>, CSVFile)
-    \* Initialize the TLC registers used to collect statistics.
-    /\ Reset
-
-CollectStats ==
-    /\ IF torA \in ActiveTor THEN TLCSet(1, TLCGet(1) + 1) ELSE TRUE
-    /\ IF torB \in ActiveTor THEN TLCSet(2, TLCGet(2) + 1) ELSE TRUE
-    /\ IF Cardinality(ActiveToRs) = 1 THEN TLCSet(3, TLCGet(3) + 1) ELSE TRUE
-    /\ IF Cardinality(ActiveToRs) = 2 THEN TLCSet(4, TLCGet(4) + 1) ELSE TRUE
-    /\ IF Cardinality(ActiveToRs) = 0 THEN TLCSet(5, TLCGet(5) + 1) ELSE TRUE
+    /\ CSVRecords(CSVFile) = 0 => CSVWrite("torA#torB#none#one#both#states#flags#failures", <<>>, CSVFile)
 
 WriteToCSV ==
     \* Cfg: CONSTRAINT WriteToCSV
     /\ TLCGet("level") = TLCGet("config").depth =>
         /\ CSVWrite("%1$s#%2$s#%3$s#%4$s#%5$s#%6$s#%7$s#%8$s", 
-            <<TLCGet(1), TLCGet(2), TLCGet(3), TLCGet(4), TLCGet(5), TLCGet("level"), flag, failures>>, CSVFile)
-        /\ Reset
-        /\ TLCGet("stats").traces % 250 = 0 =>
+            <<0, 0, active[1], active[2], active[3], TLCGet("level"), flag, failures>>, CSVFile)
+        /\ TLCGet("stats").traces % 1000 = 0 =>
             /\ IOExec(<<"/usr/bin/env", "Rscript", "dualtor_stats.R", CSVFile>>).exitValue = 0
 
 PostCondition ==
