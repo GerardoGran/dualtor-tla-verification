@@ -2,8 +2,6 @@
 
 library(tidyverse)
 library(ggplot2)
-library(dplyr)
-# library(tidyr)
 
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -23,4 +21,4 @@ svg(gsub(".csv$", ".svg", args[1]))
 
 ggplot(df, aes(fill=Active, y=States, x="")) + 
   geom_bar(position="stack", stat="identity") +
-  xlab("")
+  xlab(paste("Samples: ", nrow(data)))
