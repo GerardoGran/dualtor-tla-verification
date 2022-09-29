@@ -411,6 +411,17 @@ LinkState(t, otherTor) ==
     /\  t.linkState = "LinkDown" \* unnecessary, because going from LinkUp to LinkUp is just (finite) stuttering.  However, this conjunct prevent the debugger from evaluating this action when it is stuttering.
     /\  t' = [t EXCEPT !.linkState = "LinkUp"]
 
+----------------------------------------------------------------------------
+
+(******************)
+(* Reboot Actions *)
+(******************)
+
+RebootXCVRD(t, otherTor) == 
+    /\  t.xcvrd = "crashed"
+    /\  t' = [ t EXCEPT !.xcvrd = "-"]
+    /\  UNCHANGED <<mux, otherTor>>
+
 -----------------------------------------------------------------------------
 
 System ==
@@ -426,6 +437,8 @@ System ==
     \/  NACK(torB, torA)
     \/  XCVRD_FAIL_RESPONSE(torA, torB)
     \/  XCVRD_FAIL_RESPONSE(torB, torA)
+    \/  RebootXCVRD(torA, torB)
+    \/  RebootXCVRD(torB, torA)
     (****************************************************************************)
     (* XCVRD and LinkMgrd                                                       *)
     (****************************************************************************)
@@ -547,17 +560,6 @@ FailMux ==
     /\  UNCHANGED <<torA, torB>>
     /\  mux' \in [ active: T, next: T, serving: {"-"} ]
 
-
-
-----------------------------------------------------------------------------
-(******************)
-(* Reboot Actions *)
-(******************)
-
-RebootXCVRD(t, otherTor) == 
-    /\  t.xcvrd = "crashed"
-    /\  t' = [ t EXCEPT !.xcvrd = "-"]
-    /\  UNCHANGED <<mux, otherTor>>
 -----------------------------------------------------------------------------
 
 
@@ -572,9 +574,6 @@ Environment ==
     \* \/  FailLinkState(torB, torA)
     \/  CrashXCVRD(torA, torB)
     \/  CrashXCVRD(torB, torA)
-    \/  RebootXCVRD(torA, torB)
-    \/  RebootXCVRD(torB, torA)
-
 
 Fairness ==
     /\  WF_vars(System)
