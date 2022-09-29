@@ -40,6 +40,11 @@ WriteToCSV ==
         /\ TLCGet("stats").traces % 250 = 0 =>
             /\ IOExec(<<"/usr/bin/env", "Rscript", "dualtor_stats.R", CSVFile>>).exitValue = 0
 
+PostCondition ==
+    \* +1 because of header in csv file.
+    /\ Assert(TLCGet("config").traces + 1 = CSVRecords(CSVFile), <<"Fewer samples than expected:", CSVRecords(CSVFile)>>)
+    /\ IOExec(<<"/usr/bin/env", "Rscript", "dualtor_stats.R", CSVFile>>).exitValue = 0
+
 ===============================================================================
 
-$ rm *.csv ; tlc dualtor_stats -note -generate -depth -1
+$ rm *.csv *.svg ; tlc dualtor_stats -note -generate num=1000 -depth 10000
