@@ -14,7 +14,8 @@ summary = summarise(group_by(data,flags),
                     One = round(mean(one), 0),
                     Both = round(mean(both, 0)),
                     None = round(mean(none, 0)),
-                    Failures = round(mean(failures, 0))
+                    Failures = round(mean(failures, 0)),
+                    Oscillation = round(mean(oscillation, 0))
 )
 
 df <- pivot_longer(summary, cols=2:4, names_to = "Active", values_to = "States")

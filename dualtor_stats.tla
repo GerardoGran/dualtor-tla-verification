@@ -4,17 +4,18 @@ EXTENDS CSV, TLC, TLCExt, IOUtils, FiniteSetsExt, Sequences, Integers, dualtor
 Flags ==
     {{"TH"}, {"FL"}, {"FT"}, {"CX"}, {"FM"}, {"FH"}, {"OT"}}
 
-VARIABLE flag, failures, active
-simVars == <<flag, failures, active>>
+VARIABLE flag, failures, active, oscillation
+simVars == <<flag, failures, active, oscillation>>
 
 SimInit ==
     /\ failures = 0
+    /\ oscillation = 0
     /\ active = <<0, 0, 0>>
     \* Single feature flags.
     \* All subsets of feature flags.
     \* /\ flag \in SUBSET UNION Flags
     /\ flag \in {{}} \union Flags
-
+    \* Original dualtor!Init except that torA is dead iff OT \in flag. 
     /\  mux \in {f \in [ active: T, next: T, serving: T \union {"-"} ]: f.active = f.next /\ f.serving = "-"}
     /\  torB \in InitialTor("torA", IF "OT" \in flag THEN {FALSE} ELSE {TRUE})
     /\  torA \in InitialTor("torB", {TRUE})
@@ -50,7 +51,11 @@ SimNext ==
     /\ IF flag # {} /\ RandomElement(1..100) = 1
        THEN SimEnvironment
        ELSE System /\ UNCHANGED failures
-    /\ active' = [ active EXCEPT ![Quantify({torA', torB'}, LAMBDA t: t \in ActiveTor) + 1] = @ + 1 ]
+    /\ LET n == Quantify({torA', torB'}, LAMBDA t: t \in ActiveTor)
+       IN /\ active' = [ active EXCEPT ![n + 1] = @ + 1 ]
+          /\ oscillation' = IF Quantify({torA, torB}, LAMBDA t: t \in ActiveTor) # n
+                            THEN oscillation + 1
+                            ELSE oscillation
 
 SimSpec ==
     /\ SimInit
@@ -71,13 +76,13 @@ CSVFile ==
 
 ASSUME
     \* Initialize the CSV file with a header.
-    /\ CSVRecords(CSVFile) = 0 => CSVWrite("torA#torB#none#one#both#states#flags#failures", <<>>, CSVFile)
+    /\ CSVRecords(CSVFile) = 0 => CSVWrite("oscillation#none#one#both#states#flags#failures", <<>>, CSVFile)
 
 WriteToCSV ==
     \* Cfg: CONSTRAINT WriteToCSV
     /\ TLCGet("level") = TLCGet("config").depth =>
-        /\ CSVWrite("%1$s#%2$s#%3$s#%4$s#%5$s#%6$s#%7$s#%8$s", 
-            <<0, 0, active[1], active[2], active[3], TLCGet("level"), flag, failures>>, CSVFile)
+        /\ CSVWrite("%1$s#%2$s#%3$s#%4$s#%5$s#%6$s#%7$s", 
+            <<oscillation, active[1], active[2], active[3], TLCGet("level"), flag, failures>>, CSVFile)
         /\ TLCGet("stats").traces % 1000 = 0 =>
             /\ IOExec(<<"/usr/bin/env", "Rscript", "dualtor_stats.R", CSVFile>>).exitValue = 0
 
