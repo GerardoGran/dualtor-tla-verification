@@ -53,9 +53,9 @@ SimNext ==
        ELSE System /\ UNCHANGED failures
     /\ LET n == Quantify({torA', torB'}, LAMBDA t: t \in ActiveTor)
        IN /\ active' = [ active EXCEPT ![n + 1] = @ + 1 ]
-          /\ oscillation' = IF Quantify({torA, torB}, LAMBDA t: t \in ActiveTor) # n
-                            THEN oscillation + 1
-                            ELSE oscillation
+    /\ oscillation' = IF mux.active' # mux.active
+                      THEN oscillation + 1
+                      ELSE oscillation
 
 SimSpec ==
     /\ SimInit
