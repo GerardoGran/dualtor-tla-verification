@@ -24,7 +24,7 @@ df$Active<-replace(df$Active, df$Active=="Both", 2)
 
 ggplot(NULL, aes(y=States, x=flags)) + 
   geom_bar(data = df, aes(fill=Active), position="dodge", stat="identity") +
-  geom_bar(data = df, aes(y=Failures, x=flags), position="dodge", stat="identity", alpha = 0.1) +
-  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=0.5)) +
+  geom_bar(data = df, aes(y=Failures, x=flags), position="dodge", stat="identity", alpha = 0.2) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5)) +
   labs(title = paste("Samples: ", nrow(data))) +
   xlab("Failures")
