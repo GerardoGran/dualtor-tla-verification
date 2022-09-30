@@ -75,7 +75,18 @@ StandbyTor ==
       linkState: {"LinkUp"},
       muxState: {"MuxStandby", "MuxWait"},
       target: {"-"} ]
-          
+
+InitialTor(name, A) == 
+    [ alive           : A,
+      name            : {name},
+      xcvrd           : {"-"},
+      heartbeat       : {"on"},
+      heartbeatIn     : {{}},
+      linkProber      : {"LPWait"},
+      linkState       : {"LinkDown","LinkUp"},
+      muxState        : {"MuxWait"},
+      target          : {"-"} ]
+     
 ActiveToRs ==
     { t \in {torA, torB} : t \in ActiveTor }
         
@@ -91,19 +102,9 @@ TypeOK ==
     /\  mux \in [ active: T, next: T, serving: T \union {"-"} ]
 
 Init ==
-    LET InitialTor(name) == 
-        [ alive           : {TRUE},
-          name            : {name},
-          xcvrd           : {"-"},
-          heartbeat       : {"on"},
-          heartbeatIn     : {{}},
-          linkProber      : {"LPWait"},
-          linkState       : {"LinkDown","LinkUp"},
-          muxState        : {"MuxWait"},
-          target          : {"-"} ]
-    IN  /\  mux \in {f \in [ active: T, next: T, serving: T \union {"-"} ]: f.active = f.next /\ f.serving = "-"}
-        /\  torA \in InitialTor("torA")
-        /\  torB \in InitialTor("torB")
+    /\  mux \in {f \in [ active: T, next: T, serving: T \union {"-"} ]: f.active = f.next /\ f.serving = "-"}
+    /\  torA \in InitialTor("torA", {TRUE})
+    /\  torB \in InitialTor("torB", {TRUE})
 
 -----------------------------------------------------------------------------
 \* State machine and transition table pages 12 & 13 of the Powerpoint presentation as of 08/25/2022

@@ -2,19 +2,22 @@
 EXTENDS CSV, TLC, TLCExt, IOUtils, FiniteSetsExt, Sequences, Integers, dualtor
 
 Flags ==
-    {{"TH"}, {"FL"}, {"FT"}, {"CX"}, {"FM"}, {"FH"}}
+    {{"TH"}, {"FL"}, {"FT"}, {"CX"}, {"FM"}, {"FH"}, {"OT"}}
 
 VARIABLE flag, failures, active
 simVars == <<flag, failures, active>>
 
 SimInit ==
-    /\ Init
     /\ failures = 0
     /\ active = <<0, 0, 0>>
     \* Single feature flags.
-    /\ flag \in {{}} \union Flags
     \* All subsets of feature flags.
     \* /\ flag \in SUBSET UNION Flags
+    /\ flag \in {{}} \union Flags
+
+    /\  mux \in {f \in [ active: T, next: T, serving: T \union {"-"} ]: f.active = f.next /\ f.serving = "-"}
+    /\  torB \in InitialTor("torA", IF "OT" \in flag THEN {FALSE} ELSE {TRUE})
+    /\  torA \in InitialTor("torB", {TRUE})
 
 SimEnvironment == 
     /\ failures' = failures + 1
@@ -38,6 +41,8 @@ SimEnvironment ==
         \/ /\ "FL" \in flag
            /\ \/ FailLinkState(torA, torB)
               \/ FailLinkState(torB, torA)
+        \/ /\ "OT" \in flag
+           /\ UNCHANGED vars
 
 SimNext ==
     /\ UNCHANGED flag
@@ -56,8 +61,8 @@ SimSpec ==
 ASSUME
     \* The data collection below only works with TLC running in generation mode.
     /\ TLCGet("config").mode = "generate"
-    \* The algorithm terminates. Thus, do not check for deadlocks.
-    \* /\ TLCGet("config").deadlock = FALSE
+    \* The algorithm does *not* terminate => Check for deadlocks.
+    /\ TLCGet("config").deadlock = TRUE
     \* Require a recent versions of TLC with support for the operators appearing here.
     /\ TLCGet("revision").timestamp >= 1663720820 
 
