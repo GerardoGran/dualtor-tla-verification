@@ -11,15 +11,13 @@ VARIABLES
     torA,
     torB,
     mux
-    (*******************************************************************************)
-    (* LinkProber knows wether the TOR it's hosted in should be active or standby  *)
-    (* by listening to the active ToR's heartbeat that is sent to both ToR's. It   *)
-    (* knows this because this ICMP "heartbeat" has the name or MAC address of the *)
-    (* active ToR.                                                                 *)
-    (*                                                                             *)
-    (* In the specification, this is represented by the heartbeatSender variable   *)
-    (* since the standby ToR's heartbeat will be dropped and never listened to.    *)
-    (*******************************************************************************)   
+    (***********************************************************************************************)
+    (* ToR variables hold their submodules' states, their instance of XCVRD's pending commands     *)
+    (* whether it can send heartbeats, or is alive or not.                                         *)
+    (*                                                                                             *)
+    (* mux holds which direction the MUX is listening in, the next direction if there is a pending *)
+    (* switch, and which tor it is serving since it does blocking calls.                           *)
+    (***********************************************************************************************)
     
 
 vars == <<torA, torB, mux>>
@@ -340,6 +338,11 @@ SendHeartbeat(t, otherTor) ==
             /\  torB' = [ torB EXCEPT !.heartbeatIn = @ \union {[sender |-> t.name, switchTarget |-> otherTor.name]} ]
 
 ReadHeartbeat(t, otherTor) ==
+    (******************************************************************************************************************)
+    (* A ToR reads an incoming heartbeat, compares the sender to self and will trigger a check or switch depending on *)
+    (* the combination of states.                                                                                     *)
+    (* If there is a tlv encoded command in the heartbeat it will only read it if it comes from peer.                 *)
+    (******************************************************************************************************************)
     /\  UNCHANGED <<otherTor>>
     /\  t.alive
     /\  t.linkState = "LinkUp"
@@ -507,6 +510,9 @@ FailHeartbeat ==
                 /\  UNCHANGED torA
 
 TimeoutHeartbeat(t, otherTor) ==
+    (********************************************************************)
+    (* A ToR times out a heartbeat and makes LinkProber go into Unknown *)
+    (********************************************************************)
     /\  t.alive
     /\  UNCHANGED otherTor
     /\  \/  /\  t.muxState \in {"MuxActive", "MuxUnknown"}
